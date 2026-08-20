@@ -74,6 +74,8 @@
     background: var(--panel); padding: 0 2px; opacity: .85; }
   .sun-line.sunrise span { color: #a3760f; }
   .sun-line.sunset span  { color: #5b5390; }
+  .day-meta .temp { cursor: help; }
+  .day-meta .season { font-size: 10px; }
   .day-meta { font-size: 9px; color: var(--ink-dim); line-height: 1.35; margin-top: 2px; }
 
   /* Calendar */
@@ -1183,10 +1185,37 @@ function showDayHeaderMenu(evt, dayId) {
     ["Add a day AFTER this one",  () => insertDay(dayId, "after")],
     ["sep"],
     ["Set location", () => openSlotDialog(dayId, "location")],
+    ["Clear location for a range of days\u2026", () => clearLocationRange(dayId)],
     ["Change date",  () => openSlotDialog(dayId, "date")],
     ["sep"],
     ["Delete this day", () => deleteDay(dayId)],
   ]);
+}
+
+// Adding days copies the previous day's location forward, which is usually what you want
+// -- but it means a long stretch can inherit a city that no longer applies. Clearing them
+// one at a time is 20+ dialogs, so clear a whole range at once.
+function clearLocationRange(dayId) {
+  const it = activeItin();
+  const start = it.days.findIndex(d => d.id === dayId) + 1;   // 1-based, as shown in the UI
+  if (start < 1) return;
+  const answer = prompt(
+    `Clear the location on days ${start} to ___ ?\n\nEnter the LAST day number to clear (1-${it.days.length}).`,
+    String(Math.min(it.days.length, start)));
+  if (answer === null) return;
+  const end = parseInt(answer, 10);
+  if (!end || end < start || end > it.days.length) {
+    alert(`Enter a day number between ${start} and ${it.days.length}.`);
+    return;
+  }
+  let n = 0;
+  for (let i = start - 1; i <= end - 1; i++) {
+    if (it.days[i].location || it.days[i].location2) n++;
+    it.days[i].location = "";
+    it.days[i].location2 = "";
+  }
+  save(); renderCalendar();
+  alert(`Cleared the location on ${n} day${n === 1 ? "" : "s"} (day ${start} to ${end}).`);
 }
 
 // Inserting a day pushes every later day one day later -- dates AND any hotel stay
@@ -1364,7 +1393,7 @@ async function healHotelPhotos() {
 // value is a sound stand-in rather than a guess.
 async function dayClimate(lat, lng, isoDate) {
   const md = isoDate.slice(5);                       // MM-DD
-  const key = `mpvClim_${lat.toFixed(1)}_${lng.toFixed(1)}_${md}`;
+  const key = `mpvClim2_${lat.toFixed(1)}_${lng.toFixed(1)}_${md}`;
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
   if (cached) return cached;
@@ -1376,7 +1405,7 @@ async function dayClimate(lat, lng, isoDate) {
   try {
     const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}`
       + `&start_date=${start}&end_date=${end}`
-      + `&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto`;
+      + `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset&timezone=auto`;
     const r = await fetch(url);
     const d = await r.json();
     const dl = d && d.daily;
@@ -1389,12 +1418,43 @@ async function dayClimate(lat, lng, isoDate) {
     const out = {
       hi: avg(dl.temperature_2m_max),
       lo: avg(dl.temperature_2m_min),
+      rain: dl.precipitation_sum ? avg(dl.precipitation_sum) : null,
       sunrise: dl.sunrise && dl.sunrise[mid] ? dl.sunrise[mid].slice(11, 16) : null,
       sunset: dl.sunset && dl.sunset[mid] ? dl.sunset[mid].slice(11, 16) : null,
     };
     localStorage.setItem(key, JSON.stringify(out));
     return out;
   } catch (e) { return null; }
+}
+
+// Rates the day from the climate numbers we actually measured, and says WHY in the same
+// breath. Deliberately does not assert things the data can't support (e.g. "monsoon") --
+// it reports observed heat, cold and rainfall for that week of the year.
+function seasonRating(c) {
+  if (!c || c.hi == null) return null;
+  const hi = c.hi, lo = c.lo, rain = c.rain;
+  const bits = [];
+  let score = 0;                                   // + good, - bad
+
+  if (hi >= 18 && hi <= 28) { score += 2; bits.push(`comfortable ${hi}\u00b0 days`); }
+  else if (hi > 34) { score -= 2; bits.push(`hot ${hi}\u00b0 days, hard going at midday`); }
+  else if (hi > 28) { score -= 0.5; bits.push(`warm ${hi}\u00b0 days`); }
+  else if (hi < 5) { score -= 2; bits.push(`cold ${hi}\u00b0 days`); }
+  else { score -= 0.5; bits.push(`cool ${hi}\u00b0 days`); }
+
+  if (lo != null && lo < 0) { score -= 1; bits.push(`freezing nights (${lo}\u00b0)`); }
+  else if (lo != null && lo >= 12 && lo <= 22) { score += 0.5; bits.push(`mild nights`); }
+
+  if (rain != null) {
+    if (rain < 1) { score += 1.5; bits.push("dry"); }
+    else if (rain < 4) { score += 0.5; bits.push(`light rain (~${rain.toFixed(1)}mm/day)`); }
+    else if (rain < 9) { score -= 1; bits.push(`wet (~${rain.toFixed(1)}mm/day)`); }
+    else { score -= 2.5; bits.push(`very wet (~${rain.toFixed(1)}mm/day)`); }
+  }
+
+  const face = score >= 2.5 ? "\ud83d\ude42" : score >= 0 ? "\ud83d\ude10" : "\ud83d\ude41";
+  const verdict = score >= 2.5 ? "Good time to visit" : score >= 0 ? "Average time to visit" : "Poor time to visit";
+  return { face, text: `${verdict}: ${bits.join(", ")}. Based on this week of the year in recent years.` };
 }
 
 // Two hairlines across the day's own column, at that city's real sunrise/sunset.
@@ -1430,7 +1490,10 @@ async function fillDayMeta(grid) {
     if (!c) continue;
     // Temperature stays in the header; sunrise/sunset are drawn ON the grid at their
     // real times instead, where they actually mean something (JP, 2026-08-20).
-    const html = (c.hi != null && c.lo != null) ? `${c.hi}\u00b0 / ${c.lo}\u00b0C` : "";
+    const r = seasonRating(c);
+    const html = (c.hi != null && c.lo != null)
+      ? `<span class="temp" ${r ? `title="${r.text.replace(/"/g, "&quot;")}"` : ""}>${c.hi}\u00b0 / ${c.lo}\u00b0C${r ? ` <span class="season">${r.face}</span>` : ""}</span>`
+      : "";
     seen.set(cacheKey, html);
     el.innerHTML = html;
     drawSunLines(el, c);
