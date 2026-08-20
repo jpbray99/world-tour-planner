@@ -70,6 +70,9 @@
   .stat { display: flex; flex-direction: column; align-items: center; text-align: center;
     padding: 0 12px; border-right: 1px solid var(--border); }
   .stat:last-child { border-right: none; }
+  /* A stat with a hover breakdown behind it -- otherwise nobody knows to look. */
+  .stat.has-detail { cursor: help; }
+  .stat.has-detail b { border-bottom: 1px dotted var(--ink-dim); }
   .stat b { font-size: 15px; line-height: 1.1; }
   .stat span { font-size: 9.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .04em; }
   .sun-line { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; z-index: 1; }
@@ -1176,8 +1179,14 @@ const TRANSPORT_META = {
 // working; day.transports is the general list (train/taxi/ferry/bus/extra flights).
 function dayTransports(day) {
   const list = [];
+  const same = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
+  // The old single day.flight was migrated into day.transports without being cleared, so a
+  // migrated day carried the SAME leg twice. That double-counted legs and drew the route
+  // as A -> B -> A -> B, billing one flight three times over (JP, 2026-08-20).
+  const dup = t => day.flight && same(t.from, day.flight.from) && same(t.to, day.flight.to)
+                   && (t.type || "flight") === (day.flight.type || "flight");
   if (day.flight) list.push({ ...day.flight, id: day.flight.id || "legacy", type: day.flight.type || "flight", _legacy: true });
-  (day.transports || []).forEach(t => list.push(t));
+  (day.transports || []).forEach(t => { if (!dup(t)) list.push(t); });
   return list;
 }
 
@@ -1432,11 +1441,32 @@ async function renderTripStats() {
     const g = await geocode(s.name);
     if (!g) continue;
     if (g.countryCode) countries.add(g.countryCode);
-    coords.push(g);
+    coords.push({ ...g, name: s.name });
   }
+  // A round-the-world total is easy to believe and easy to get wrong: one stop that
+  // geocodes to the wrong continent flings the route out and back and can add 20,000
+  // phantom miles. Hovering the figure lists the longest hops, so a bogus one is obvious
+  // instead of hiding inside a plausible-looking number (JP, 2026-08-20).
   let km = 0;
-  for (let i = 0; i < coords.length - 1; i++) km += haversineKm(coords[i], coords[i + 1]);
-  const legs = it.days.reduce((n, d) => n + dayTransports(d).length, 0);
+  const hops = [];
+  for (let i = 0; i < coords.length - 1; i++) {
+    const d = haversineKm(coords[i], coords[i + 1]);
+    km += d;
+    if (d >= 1) hops.push({ d, from: coords[i].name, to: coords[i + 1].name });
+  }
+  const mi = d => Math.round(d * 0.621371).toLocaleString();
+  const milesTitle = hops.length
+    ? "Longest hops:\n" + hops.slice().sort((a, b) => b.d - a.d).slice(0, 8)
+        .map(h => `${h.from} \u2192 ${h.to}: ${mi(h.d)} mi`).join("\n")
+    : "";
+  // "Legs" counts EVERY transport, not just flights -- a drive and a train are legs too,
+  // which is why the figure reads higher than a count of flights. The tooltip spells out
+  // exactly which ones are in there (JP, 2026-08-20).
+  const allLegs = it.days.flatMap(d => dayTransports(d));
+  const legs = allLegs.length;
+  const legsTitle = allLegs.length
+    ? allLegs.map(t => `${(TRANSPORT_META[t.type] || TRANSPORT_META.flight).label}: ${t.from || "?"} \u2192 ${t.to || "?"}`).join("\n")
+    : "";
   const isAirbnb = h => !!h && (/muscache|airbnb/i.test(h.photoUrl || "") || /airbnb|villa|apartment|apt\b/i.test(h.name || ""));
   const redEyeNights = it.days.filter(d => d.hotel && d.hotel.redEye).length;
   // A night on a plane is not a hotel night, and counting it as one overstated both the
@@ -1445,13 +1475,14 @@ async function renderTripStats() {
   const bnbNights = it.days.filter(d => isAirbnb(d.hotel) && !d.hotel.redEye).length;
   const hotelNights = nights - bnbNights;
   const acts = it.days.reduce((n, d) => n + (d.activities || []).length, 0);
-  const stat = (v, label) => `<div class="stat"><b>${v}</b><span>${label}</span></div>`;
+  const attr = t => t ? ` title="${t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"` : "";
+  const stat = (v, label, title) => `<div class="stat${title ? " has-detail" : ""}"${attr(title)}><b>${v}</b><span>${label}</span></div>`;
   el.innerHTML =
     stat(it.days.length, "days") +
     stat(countries.size, countries.size === 1 ? "country" : "countries") +
-    stat(new Set(stops.map(x => x.toLowerCase())).size, "cities") +
-    stat(Math.round(km * 0.621371).toLocaleString(), "miles") +
-    stat(legs, legs === 1 ? "leg" : "legs") +
+    stat(new Set(stops.filter(x => x.kind === "stay").map(x => x.name.toLowerCase())).size, "cities") +
+    stat(mi(km), "miles", milesTitle) +
+    stat(legs, legs === 1 ? "leg" : "legs", legsTitle) +
     stat(hotelNights, hotelNights === 1 ? "hotel night" : "hotel nights") +
     stat(bnbNights, bnbNights === 1 ? "rental night" : "rental nights") +
     (redEyeNights ? stat(redEyeNights, redEyeNights === 1 ? "red-eye" : "red-eyes") : "") +
