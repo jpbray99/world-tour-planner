@@ -73,6 +73,16 @@
   /* A stat with a hover breakdown behind it -- otherwise nobody knows to look. */
   .stat.has-detail { cursor: help; }
   .stat.has-detail b { border-bottom: 1px dotted var(--ink-dim); }
+  /* The route as text. A map hides a wrong coordinate behind a pretty line; a list cannot. */
+  #routeCheck:empty { display: none; }
+  #routeCheck { margin-bottom: 8px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--panel); padding: 10px 12px; font-size: 12px; max-height: 190px; overflow: auto; }
+  #routeCheck h4 { margin: 0 0 6px; font-size: 12px; }
+  #routeCheck ol { margin: 0; padding-left: 22px; }
+  #routeCheck li { margin: 1px 0; }
+  #routeCheck .where { color: var(--ink-dim); }
+  #routeCheck .odd { background: var(--bad-dim); color: var(--bad); font-weight: 600;
+    border-radius: 4px; padding: 0 4px; }
   .stat b { font-size: 15px; line-height: 1.1; }
   .stat span { font-size: 9.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .04em; }
   .sun-line { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; z-index: 1; }
@@ -356,6 +366,7 @@
           <button class="btn" id="regeocodeBtn">Re-fetch coordinates</button>
         </div>
       </div>
+      <div id="routeCheck"></div>
       <div id="globeViz"></div>
     </div>
   </div>
@@ -2618,6 +2629,43 @@ function orderedStops(it) {
   return stops;
 }
 
+// The globe is a beautiful liar: a stop that resolved to the wrong country still gets a
+// smooth white arc drawn to it, and the eye reads the arc as an itinerary rather than as a
+// mistake. The same route as a numbered LIST cannot hide that -- every stop states where it
+// actually landed, and a stop that is a long detour from both of its neighbours is called
+// out by name (JP, 2026-08-20).
+function renderRouteCheck(resolved) {
+  const el = document.getElementById("routeCheck");
+  if (!el) return;
+  const miNum = km => km * 0.621371;
+  let stayNo = 0;
+  const seen = new Map();
+  const rows = resolved.map((p, i) => {
+    const key = p.lng.toFixed(3) + "," + p.lat.toFixed(3);
+    if (p.kind === "stay" && !seen.has(key)) seen.set(key, ++stayNo);
+    const prev = resolved[i - 1], next = resolved[i + 1];
+    // Going via this stop instead of straight past it costs this many extra miles. A real
+    // stop costs little; one that landed on the wrong continent costs thousands.
+    const detour = prev && next
+      ? miNum(haversineKm(prev, p) + haversineKm(p, next) - haversineKm(prev, next)) : 0;
+    return { p, no: p.kind === "stay" ? seen.get(key) : null, detour };
+  });
+  const odd = rows.filter(r => r.detour > 600);
+  el.innerHTML = `<h4>Route check \u2014 ${stayNo} places, ${resolved.length} points`
+    + (odd.length ? ` \u00b7 <span class="odd">${odd.length} way off course</span>` : "")
+    + `</h4><ol>`
+    + rows.map(r => {
+        const at = [r.p.display, (r.p.countryCode || "").toUpperCase()].filter(Boolean).join(", ");
+        return `<li value="${r.no || ""}"${r.no ? "" : ' style="list-style:none;margin-left:-14px"'}>`
+          + (r.no ? "" : "\u00b7 ")
+          + `<b>${r.p.name}</b> <span class="where">\u2192 ${at || "?"} `
+          + `(${r.p.lat.toFixed(2)}, ${r.p.lng.toFixed(2)})</span>`
+          + (r.detour > 600 ? ` <span class="odd">+${Math.round(r.detour).toLocaleString()} mi detour</span>` : "")
+          + `</li>`;
+      }).join("")
+    + `</ol>`;
+}
+
 async function renderGlobe() {
   const status = document.getElementById("globeStatus");
   const el = document.getElementById("globeViz");
@@ -2641,6 +2689,7 @@ async function renderGlobe() {
   status.textContent = `${resolved.length}/${stops.length} stops mapped`
     + (failed.length ? ` \u2014 couldn't find: ${failed.join(", ")}` : "")
     + ". Drag to spin, scroll to zoom.";
+  renderRouteCheck(resolved);
 
   if (!state.mapboxToken) {
     status.innerHTML = 'Add a Mapbox token in \u2699 (top right of the assistant panel) to show the globe. '
@@ -2753,16 +2802,19 @@ async function drawRoute(resolved) {
   let stayNo = 0;
   const groups = new Map();
   resolved.forEach(p => {
-    const n = p.kind === "stay" ? ++stayNo : null;
     const key = p.lng.toFixed(3) + "," + p.lat.toFixed(3);
     let g = groups.get(key);
     if (!g) { g = { lng: p.lng, lat: p.lat, numbers: [], names: [] }; groups.set(key, g); }
-    if (n != null) g.numbers.push(n);
+    // A place gets ONE number, assigned the first time the trip stays there. Numbering each
+    // NIGHT instead put "5.6" on Rome and "7.8" on Cairo for nothing more than a second
+    // night, and a day trip out and back split the city in two the same way. Four nights in
+    // Rome is still the 5th place you go (JP, 2026-08-20).
+    if (p.kind === "stay" && !g.numbers.length) g.numbers.push(++stayNo);
     if (!g.names.includes(p.name)) g.names.push(p.name);
   });
   groups.forEach(g => {
     const pin = document.createElement("div");
-    pin.className = "stop-pin" + (g.numbers.length ? (g.numbers.length > 1 ? " multi" : "") : " via");
+    pin.className = "stop-pin" + (g.numbers.length ? "" : " via");
     pin.textContent = g.numbers.join("\u00b7");
     const label = (g.numbers.length ? g.numbers.join(", ") + ". " : "") + g.names.join(" / ");
     const marker = new mapboxgl.Marker({ element: pin })
