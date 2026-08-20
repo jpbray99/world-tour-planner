@@ -194,8 +194,12 @@
 
   dialog { border: none; border-radius: 10px; padding: 22px 24px; width: min(560px, calc(100vw - 40px));
     box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
-  /* Currency is a 3-letter code -- it never needs a full-width control next to a price. */
-  dialog select.cur { width: 96px; flex: 0 0 96px; }
+  /* Currency is a 3-letter code -- it never needs a full-width control next to a price.
+     `flex: 0 0 96px` used to sit here, written for a select directly inside a horizontal
+     .row. It is wrapped in a .field, which is flex-direction:column -- so that 96px was
+     being read as flex-basis along the COLUMN, i.e. a 96px TALL dropdown (JP, 2026-08-20).
+     The .field beside it sizes to content, so the width belongs on the select alone. */
+  dialog select.cur { width: 96px; flex: none; }
   /* min-width:0 lets the price field shrink; without it the input's intrinsic width
      kept the pair from fitting on one line and the currency wrapped below. */
   dialog .field { display: flex; flex-direction: column; min-width: 0; }
@@ -670,15 +674,26 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
         <input id="t_overnight" type="checkbox" ${preOvernight ? "checked" : ""} style="width:auto" />
         Lands the NEXT day \u2014 arrival shows on the following day's column</label>
       <div class="row">
-        <div style="flex:1"><label class="muted">Price PER PERSON (\u00d7${it.pax} in budget)</label><input id="t_price" type="number" value="${t.price != null ? t.price : ""}" /></div>
+        <div style="flex:1"><label class="muted" id="t_priceLabel"></label><input id="t_price" type="number" value="${t.price != null ? t.price : ""}" /></div>
         <div class="field"><label class="muted">Currency</label><select id="t_cur" class="cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${t.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
       </div>
       <label class="muted">Operator / notes</label>
-      <input id="t_op" value="${t.airline || t.operator || ""}" placeholder="Air Canada, Renfe, ..." />
+      <input id="t_op" value="${t.airline || t.operator || ""}" />
       ${bookingFieldsHtml("t", t, "Flight / train #")}
       ${bizFieldsHtml("t", t)}`;
     wireBizFields("t");
     document.getElementById("t_calc").addEventListener("click", calcGroundTime);
+    // The price question and the operator example both change with the mode, so they
+    // follow the dropdown instead of being written once for flights and left wrong.
+    const syncTransportType = () => {
+      const ty = document.getElementById("t_type").value;
+      document.getElementById("t_priceLabel").textContent = perVehicle(ty)
+        ? "Price for the WHOLE trip (one vehicle, not per person)"
+        : `Price PER PERSON (\u00d7${it.pax} in budget)`;
+      document.getElementById("t_op").placeholder = OPERATOR_PLACEHOLDER[ty] || "Operator";
+    };
+    document.getElementById("t_type").addEventListener("change", syncTransportType);
+    syncTransportType();
   } else if (kind === "activity" || kind === "meal") {
     const a = (day.activities || []).find(x => x.id === activityId) || {};
     // A meal IS an activity -- same times, price, booking and business fields -- so the
@@ -691,15 +706,22 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
         <div style="flex:1"><label class="muted">Start (local time in ${day.location || "this city"})</label><input id="a_start" type="time" value="${a.startTime || presetTime || ""}" /></div>
         <div style="flex:1"><label class="muted">End (optional)</label><input id="a_end" type="time" value="${a.endTime || ""}" /></div>
       </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn" id="a_calc" type="button">Calculate drive time</button>
+        <span class="muted" id="a_calcOut" style="margin-bottom:0"></span>
+      </div>
       <label class="muted">Cost (optional) — per person</label>
       <div class="row" style="align-items:flex-end">
         <div class="field" style="flex:1"><input id="a_price" type="number" value="${a.price != null ? a.price : ""}" placeholder="0" /></div>
         <div class="field"><select id="a_cur" class="cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${a.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
       </div>
+      <label class="muted">Operator / notes</label>
+      <input id="a_op" value="${a.operator || ""}" placeholder="${isMeal ? "OpenTable, hotel concierge, ..." : "Tour operator, guide, ..."}" />
       <label class="muted">Notes (confirmation number, address…)</label>
       <textarea id="a_notes" rows="2">${a.notes || ""}</textarea>
       ${bookingFieldsHtml("a", a, "Reservation name")}
       ${bizFieldsHtml("a", a)}`;
+    document.getElementById("a_calc").addEventListener("click", () => calcVenueDriveTime(day.location));
     wireBizFields("a");
   } else if (kind === "date") {
     body.innerHTML = `<label class="muted">Date for this day. Changing it shifts every LATER day by the same amount, so the trip stays in order.</label><input id="f_date" type="date" value="${day.date}" />`;
@@ -880,6 +902,7 @@ document.getElementById("slotSave").addEventListener("click", async () => {
       endTime: document.getElementById("a_end").value,
       price: parseFloat(document.getElementById("a_price").value) || null,
       currency: document.getElementById("a_cur").value,
+      operator: document.getElementById("a_op").value.trim(),
       notes: document.getElementById("a_notes").value.trim(),
       ...readBizFields("a"),
       ...readBookingFields("a"),
@@ -1099,6 +1122,20 @@ function arrivesNextDay(t) {
 }
 
 const GROUND_MODES = ["drive", "taxi", "bus", "train"];   // train follows the ground too
+// Driving yourself or taking a taxi is ONE price for the vehicle: four people in a rental
+// car does not cost four times as much, so multiplying by party size overstated the trip
+// badly (JP, 2026-08-20). A train, bus, ferry or flight really is per seat.
+const PER_VEHICLE_MODES = ["drive", "taxi"];
+const perVehicle = type => PER_VEHICLE_MODES.includes(type);
+const OPERATOR_PLACEHOLDER = {
+  flight: "Air Canada, Emirates, ...",
+  train:  "Renfe, SNCF, Eurostar, ...",
+  drive:  "Hertz, Avis, own car, ...",
+  taxi:   "Uber, Bolt, local taxi, ...",
+  ferry:  "Balearia, Grimaldi, ...",
+  bus:    "FlixBus, National Express, ...",
+};
+
 const TRANSPORT_META = {
   flight: { icon: "\u2708", label: "Flight" },
   train:  { icon: "\ud83d\ude86", label: "Train" },
@@ -1779,6 +1816,7 @@ async function itinTotal(it) {
   // you no way to go and fix it ("what doesn't have a price yet?", JP 2026-08-20). Each
   // one is recorded with the day it sits on and what it is.
   const missingItems = [];
+  let vehicleLegs = 0;                 // priced per vehicle, so NOT multiplied by pax
   const flag = (dayIdx, day, cat, label, reason) =>
     missingItems.push({ n: dayIdx + 1, date: day.date, cat, label, reason });
   // A line's business share is its own percentage of that line; the rest is personal.
@@ -1802,6 +1840,7 @@ async function itinTotal(it) {
       if (t.price == null) { flag(i, day, "transport", label, "no price"); continue; }
       const c = await toHome(t.price, t.currency);
       if (c == null) flag(i, day, "transport", label, noRate(t.currency));
+      else if (perVehicle(t.type)) { vehicleLegs++; add(c, t, "transport"); }
       else add(c * pax, t, "transport");
     }
     for (const a of (day.activities || [])) {
@@ -1823,11 +1862,11 @@ async function itinTotal(it) {
       }
     }
   }
-  return { total, missing: missingItems.length, missingItems,
+  return { total, missing: missingItems.length, missingItems, vehicleLegs,
            business, personal: total - business, by, counts, pax };
 }
 async function updateGrandTotal() {
-  const { total, missing, missingItems, business, personal, by, counts, pax } = await itinTotal(activeItin());
+  const { total, missing, missingItems, vehicleLegs, business, personal, by, counts, pax } = await itinTotal(activeItin());
   const el = document.getElementById("grandTotal");
   const fmt = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency });
   el.textContent = (missing ? "\u26a0 " : "") + fmt(total);
@@ -1835,7 +1874,12 @@ async function updateGrandTotal() {
   // Show the WORKING, not just the answer: every line says what it counted and whether
   // party size multiplied it, so the headline figure can be checked at a glance.
   const lines = [`${fmt(total)} total \u00b7 ${pax} traveller${pax === 1 ? "" : "s"}`, ""];
-  lines.push(`Transport  ${fmt(by.transport)}   (${counts.transport} leg${counts.transport === 1 ? "" : "s"} \u00d7 ${pax})`);
+  // Says which legs were multiplied, now that they are not all the same.
+  const seatLegs = counts.transport - vehicleLegs;
+  const legNote = vehicleLegs
+    ? `${seatLegs} per person \u00d7 ${pax}, ${vehicleLegs} per vehicle`
+    : `${counts.transport} leg${counts.transport === 1 ? "" : "s"} \u00d7 ${pax}`;
+  lines.push(`Transport  ${fmt(by.transport)}   (${legNote})`);
   lines.push(`Hotels     ${fmt(by.hotels)}   (${counts.hotels} night${counts.hotels === 1 ? "" : "s"}, per room)`);
   lines.push(`Activities ${fmt(by.activities)}   (${counts.activities} \u00d7 ${pax})`);
   if (business > 0) lines.push("", `Business ${fmt(business)} (${pct}%) \u00b7 Personal ${fmt(personal)} (${100 - pct}%)`);
@@ -1986,6 +2030,27 @@ async function directionsBetween(a, b, profile) {
                 coords: d.routes[0].geometry.coordinates };
   try { localStorage.setItem(key, JSON.stringify(out)); } catch (e) { /* quota: fine, refetch */ }
   return out;
+}
+
+// How long it takes to DRIVE to a restaurant or a venue from wherever the day is based.
+// The name on its own is ambiguous -- there is a Roscioli in more than one city -- so the
+// day's city is appended before geocoding, which is also what makes a bare "Tickets"
+// resolve to the right place.
+async function calcVenueDriveTime(cityName) {
+  const out = document.getElementById("a_calcOut");
+  const venue = document.getElementById("a_name").value.trim();
+  if (!cityName) { out.textContent = "Set this day's location first."; return; }
+  if (!venue) { out.textContent = "Enter the name first."; return; }
+  if (!state.mapboxToken) { out.textContent = "Add a Mapbox token in \u2699 first."; return; }
+  out.textContent = "Routing\u2026";
+  const [a, b] = [await geocode(cityName), await geocode(venue + ", " + cityName)];
+  if (!a || !b) { out.textContent = "Couldn't find it \u2014 try adding the street."; return; }
+  const res = await directionsBetween(a, b, "driving");
+  if (!res) { out.textContent = "No road route found."; return; }
+  const mins = Math.max(1, Math.round(res.hours * 60));
+  const h = Math.floor(mins / 60), m = mins % 60;
+  const km = res.km < 10 ? res.km.toFixed(1) : Math.round(res.km);
+  out.textContent = `${km} km \u00b7 about ${h ? h + "h " : ""}${m}m by road from ${cityName}`;
 }
 
 async function calcGroundTime() {
