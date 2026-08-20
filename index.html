@@ -47,6 +47,10 @@
   .stop-pin { display: flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff;
     font-size: 11px; font-weight: 700; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+  /* A stop visited twice (you fly home) shows both numbers, so the pill has to grow. */
+  .stop-pin.multi { width: auto; min-width: 22px; padding: 0 6px; border-radius: 11px; letter-spacing: .5px; }
+  /* A transit-only waypoint: the line bends here, but you never stop, so it has no number. */
+  .stop-pin.via { width: 9px; height: 9px; background: #fff; border: 2px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
   .view { display: none; }
   .view.active { display: block; }
 
@@ -227,9 +231,18 @@
     #calGrid.timeline .hour-ruler { width: 34px; }
     .stat { padding: 0 8px; }
     .stat b { font-size: 13px; }
-    /* The assistant panel becomes a collapsible drawer instead of a fixed sidebar. */
-    #chat { width: 100%; border-left: none; border-top: 1px solid var(--border);
-      max-height: 45vh; }
+    /* On a phone the calendar IS the app. The assistant, the running total and the app
+       title are all things JP does not want taking room from it, so they are dropped
+       outright rather than shrunk (JP, 2026-08-20). Everything still works on desktop. */
+    #chat { display: none; }
+    header h1 { display: none; }
+    header .totals { display: none; }
+    /* Stats stay on ONE line and scroll sideways. Wrapping turned eight of them into a
+       four-row block that pushed the calendar off the screen. */
+    #tripStats { flex-wrap: nowrap; overflow-x: auto; width: 100%;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    #tripStats::-webkit-scrollbar { display: none; }
+    #tripStats .stat { flex: 0 0 auto; }
     dialog { width: calc(100vw - 24px); max-height: 88vh; overflow-y: auto; }
     /* Comfortable tap targets -- 16px input font also stops iOS zooming on focus. */
     input, select, textarea { font-size: 16px; padding: 8px 10px; }
@@ -270,6 +283,20 @@
             <option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option>
             <option>AUD</option><option>JPY</option><option>CHF</option>
           </select>
+        </div>
+      </div>
+      <div id="publishedBar" class="card row" style="display:none;gap:10px;align-items:center"></div>
+      <div id="emptyTrip" class="card" style="display:none">
+        <b>No trip on this device yet.</b>
+        <div class="muted" style="margin-top:6px;line-height:1.5">
+          A browser keeps this planner's data per WEBSITE ADDRESS, so every device starts
+          with its own empty copy. The shared trip is the PUBLISHED one, loaded from
+          trip.json next to this page -- if nothing appeared, none has been published yet.
+          You can also bring a file over with <b>Import</b>.
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="emptyImportBtn" type="button">Import a trip file</button>
+          <button class="btn" id="emptyStartBtn" type="button">Start a new trip here</button>
         </div>
       </div>
       <div id="calWrap" tabindex="0"><div id="calGrid"></div></div>
@@ -1401,8 +1428,8 @@ async function renderTripStats() {
   const stops = orderedStops(it);            // consecutive-duplicate-free city order
   const countries = new Set();
   const coords = [];
-  for (const name of stops) {
-    const g = await geocode(name);
+  for (const s of stops) {
+    const g = await geocode(s.name);
     if (!g) continue;
     if (g.countryCode) countries.add(g.countryCode);
     coords.push(g);
@@ -1436,6 +1463,10 @@ async function renderCalendar() {
   document.getElementById("homeCurrency").value = state.homeCurrency;
   document.getElementById("paxInput").value = activeItin().pax;
   const it = activeItin();
+  // An empty planner used to be a blank page with a lone "+" and no clue why -- which is
+  // exactly what a first visit to the public URL looks like (JP, 2026-08-20).
+  const emptyBox = document.getElementById("emptyTrip");
+  if (emptyBox) emptyBox.style.display = it.days.length ? "none" : "";
   const grid = document.getElementById("calGrid");
   grid.innerHTML = "";
   grid.className = state.calendarView === "timeline" ? "timeline" : "";
@@ -2447,20 +2478,30 @@ function orderedStops(it) {
   // Montreal itinerary passes through Vancouver, so the route must bend there rather than
   // drawing one straight Seoul-Montreal arc (JP, 2026-08-20). Sources, per day, in order:
   // the day's location, each transport leg's from/to, then the optional second location.
+  // Every entry carries a KIND. "stay" is a place the trip actually stops in (a day's
+  // location); "via" is a point only touched in transit (an airport code, a connection
+  // city). Only stays get a number on the globe, so pin 4 means "the 4th place you stay",
+  // not "the 4th coordinate the route line bends at" (JP, 2026-08-20).
   const stops = [];
-  const push = name => {
+  const push = (name, kind) => {
     const n = (name || "").trim();
     if (!n) return;
-    if (stops.length && stops[stops.length - 1].toLowerCase() === n.toLowerCase()) return;
-    stops.push(n);
+    const last = stops[stops.length - 1];
+    if (last && last.name.toLowerCase() === n.toLowerCase()) {
+      // A place first seen as a transit waypoint and then confirmed as the day's location
+      // is a real stay, not a via -- promote it instead of adding a second pin on top.
+      if (kind === "stay") last.kind = "stay";
+      return;
+    }
+    stops.push({ name: n, kind });
   };
   for (const day of it.days) {
     // Transports come FIRST: they happen during the day, while day.location is where the
     // day ends up. Pushing the location first produced a Seoul -> Montreal -> Seoul ->
     // Vancouver -> Montreal zigzag that both drew wrong and inflated total mileage.
-    for (const t of dayTransports(day)) { push(t.from); push(t.to); }
-    push(day.location);
-    push(day.location2);
+    for (const t of dayTransports(day)) { push(t.from, "via"); push(t.to, "via"); }
+    push(day.location, "stay");
+    push(day.location2, "stay");
   }
   return stops;
 }
@@ -2477,9 +2518,9 @@ async function renderGlobe() {
   status.textContent = `Locating ${stops.length} stop(s)\u2026`;
 
   const resolved = [], failed = [];
-  for (const name of stops) {
-    const g = await geocode(name);
-    if (g) resolved.push({ name, ...g }); else failed.push(name);
+  for (const s of stops) {
+    const g = await geocode(s.name);
+    if (g) resolved.push({ ...g, name: s.name, kind: s.kind }); else failed.push(s.name);
   }
   if (!resolved.length) {
     status.textContent = "Couldn't locate any of these places. Try more specific names, e.g. 'Rome, Italy'.";
@@ -2591,13 +2632,30 @@ function routeCoordinates(resolved) {
 async function drawRoute(resolved) {
   globeMarkers.forEach(m => m.remove());
   globeMarkers = [];
-  resolved.forEach((p, i) => {
+  // Number the STAYS 1..N in trip order; transit waypoints get a small unnumbered dot so
+  // the route still visibly bends through them without burning a number. Pins landing on
+  // the same spot merge into ONE pin listing every number it holds: the markers are
+  // absolutely positioned, so the last one drawn otherwise covers the first, which is why
+  // a trip that STARTS in Montreal showed "37" there -- that was the flight home, sitting
+  // on top of pin 1 (JP, 2026-08-20).
+  let stayNo = 0;
+  const groups = new Map();
+  resolved.forEach(p => {
+    const n = p.kind === "stay" ? ++stayNo : null;
+    const key = p.lng.toFixed(3) + "," + p.lat.toFixed(3);
+    let g = groups.get(key);
+    if (!g) { g = { lng: p.lng, lat: p.lat, numbers: [], names: [] }; groups.set(key, g); }
+    if (n != null) g.numbers.push(n);
+    if (!g.names.includes(p.name)) g.names.push(p.name);
+  });
+  groups.forEach(g => {
     const pin = document.createElement("div");
-    pin.className = "stop-pin";
-    pin.textContent = String(i + 1);
+    pin.className = "stop-pin" + (g.numbers.length ? (g.numbers.length > 1 ? " multi" : "") : " via");
+    pin.textContent = g.numbers.join("\u00b7");
+    const label = (g.numbers.length ? g.numbers.join(", ") + ". " : "") + g.names.join(" / ");
     const marker = new mapboxgl.Marker({ element: pin })
-      .setLngLat([p.lng, p.lat])
-      .setPopup(new mapboxgl.Popup({ offset: 14 }).setText(`${i + 1}. ${p.name}`))
+      .setLngLat([g.lng, g.lat])
+      .setPopup(new mapboxgl.Popup({ offset: 14 }).setText(label))
       .addTo(globeInstance);
     globeMarkers.push(marker);
   });
@@ -2649,7 +2707,7 @@ document.getElementById("fullscreenBtn").addEventListener("click", () => {
 });
 
 document.getElementById("regeocodeBtn").addEventListener("click", () => {
-  orderedStops(activeItin()).forEach(name => localStorage.removeItem(geoCacheKey(name)));
+  orderedStops(activeItin()).forEach(s => localStorage.removeItem(geoCacheKey(s.name)));
   renderGlobe();
 });
 
@@ -2668,6 +2726,8 @@ document.getElementById("exportBtn").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 });
 document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
+document.getElementById("emptyImportBtn").addEventListener("click", () => document.getElementById("importFile").click());
+document.getElementById("emptyStartBtn").addEventListener("click", () => { addDay(); addDay(); });
 document.getElementById("importFile").addEventListener("change", async e => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
@@ -2687,9 +2747,70 @@ document.getElementById("importFile").addEventListener("change", async e => {
   } finally { e.target.value = ""; }
 });
 
+// ---------- the published trip ----------
+// A browser keeps this planner's data per website address and there is NO server behind
+// this app, so the public URL starts empty -- useless when the whole point is to check the
+// trip from a phone, or to show a spouse (JP, 2026-08-20). trip.json committed next to
+// index.html is the shared copy: every device loads the same one.
+//
+// A local working copy is never silently replaced. A newer publish is OFFERED, because
+// the laptop that BUILT the trip is usually ahead of what was last published, and quietly
+// overwriting it would throw away unpublished work.
+const PUBLISHED_TRIP = "trip.json";
+const tripHasDays = st => (st.itineraries || []).some(i => (i.days || []).length);
+
+async function fetchPublishedTrip() {
+  try {
+    const r = await fetch(PUBLISHED_TRIP, { cache: "no-store" });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return (d && Array.isArray(d.itineraries) && d.itineraries.length) ? d : null;
+  } catch (e) { return null; }   // opened from a file, or nothing published yet: both normal
+}
+
+function applyPublishedTrip(d) {
+  state.itineraries = d.itineraries;
+  state.routeOptions = d.routeOptions || {};
+  state.homeCurrency = d.homeCurrency || state.homeCurrency;
+  state.activeItinId = state.itineraries[0].id;
+  state.publishedAt = d.publishedAt || d.exportedAt || "";
+  save();
+  renderCalendar();
+}
+
+function showPublishedUpdate(d, stamp) {
+  const bar = document.getElementById("publishedBar");
+  const label = document.createElement("span");
+  label.innerHTML = `<b>A newer published trip is available</b> <span class="muted">(${stamp.slice(0, 10)})</span>`;
+  const load = document.createElement("button");
+  load.className = "btn primary"; load.type = "button"; load.textContent = "Load it";
+  load.addEventListener("click", () => {
+    if (confirm("Replace the trip on this device with the published one?\n\nAnything changed here and not published will be lost.")) {
+      applyPublishedTrip(d);
+      bar.style.display = "none";
+    }
+  });
+  const later = document.createElement("button");
+  later.className = "btn"; later.type = "button"; later.textContent = "Not now";
+  // Remembered, so the same banner does not reappear on every single load.
+  later.addEventListener("click", () => { state.publishedAt = stamp; save(); bar.style.display = "none"; });
+  bar.innerHTML = "";
+  bar.append(label, load, later);
+  bar.style.display = "";
+}
+
+async function initPublishedTrip() {
+  const d = await fetchPublishedTrip();
+  if (!d) return;
+  if (!tripHasDays(state)) { applyPublishedTrip(d); return; }
+  const stamp = d.publishedAt || d.exportedAt || "";
+  if (stamp && stamp !== state.publishedAt) showPublishedUpdate(d, stamp);
+}
+
 // ---------- init ----------
 renderChatLog();
 renderCalendar();
+initPublishedTrip();
 checkBridge();
 setInterval(checkBridge, 15000);
 </script>
