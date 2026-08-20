@@ -409,6 +409,13 @@
 <script>
 "use strict";
 const STORE_KEY = "worldTourPlannerV1";
+// Bumped to _3 on 2026-08-20. A cached coordinate is trusted forever and nothing about it
+// looks wrong -- the pin is simply on the wrong continent and the trip total is quietly
+// thousands of miles too high. Every entry written before the offline IATA table existed
+// (when "YUL" resolved to Yuen Long, Hong Kong) is still in this cache, which is why the
+// mileage stayed wrong long after the resolver was fixed. Bumping the prefix retires them.
+const GEO_CACHE_PREFIX = "mpvGeo3_";
+
 // Sits next to index.html so the GitHub Pages copy and a local file:// copy both find it.
 const REDEYE_IMG = "assets/redeye.jpg";
 const FX_TTL_MS = 12 * 60 * 60 * 1000;
@@ -447,7 +454,38 @@ function loadState() {
   return s;
 }
 let state = loadState();
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+// localStorage is a hard ~5MB per origin and setItem THROWS when it is full. Uncaught, that
+// silently discards whatever was just edited and the next reload shows an older trip -- which
+// is exactly how the traveller count reverted from 4 to 1 (JP, 2026-08-20). The trip itself is
+// the only irreplaceable thing in here; every cache can be refetched, so caches get evicted to
+// make room for it, and if even that is not enough the user is told rather than quietly losing
+// their work.
+const CACHE_PREFIXES = ["mpvGeo", "mpvWx", "mpvFx", "mpvPrev"];
+function evictCaches(keepPrefix) {
+  let freed = 0;
+  for (const k of Object.keys(localStorage)) {
+    if (k === STORE_KEY) continue;
+    if (!CACHE_PREFIXES.some(pre => k.startsWith(pre))) continue;
+    if (keepPrefix && k.startsWith(keepPrefix)) continue;
+    freed++; localStorage.removeItem(k);
+  }
+  return freed;
+}
+let saveWarned = false;
+function save() {
+  const payload = JSON.stringify(state);
+  try { localStorage.setItem(STORE_KEY, payload); return; } catch (e) {}
+  evictCaches(GEO_CACHE_PREFIX);                 // stale caches first, current geocodes last
+  try { localStorage.setItem(STORE_KEY, payload); return; } catch (e) {}
+  evictCaches(null);
+  try { localStorage.setItem(STORE_KEY, payload); return; } catch (e) {}
+  if (!saveWarned) {
+    saveWarned = true;
+    alert("This browser's storage is full, so that change could NOT be saved.\n\n"
+        + "Use Export on the toolbar to save the trip to a file before reloading, "
+        + "or the edit will be lost.");
+  }
+}
 
 function activeItin() { return state.itineraries.find(i => i.id === state.activeItinId); }
 function routeKey(a, b) { return a.trim().toLowerCase() + "||" + b.trim().toLowerCase(); }
@@ -1465,11 +1503,11 @@ async function renderTripStats() {
   for (let i = 0; i + 1 < hops.length; i++) {
     if (miNum(hops[i].d) < 500) continue;
     if (miNum(haversineKm(coords[i], coords[i + 2])) > 25) continue;   // not a reversal
-    bogus.push({ where: hops[i].to, waste: hops[i].d + hops[i + 1].d });
+    bogus.push({ where: hops[i].to, at: coords[i + 1], waste: hops[i].d + hops[i + 1].d });
   }
   // ...and a single hop longer than any flight that exists catches a bad stop with no
   // return leg after it, which the reversal test cannot see.
-  hops.forEach(h => { if (miNum(h.d) > 9500) bogus.push({ where: h.to, waste: h.d }); });
+  hops.forEach((h, i) => { if (miNum(h.d) > 9500) bogus.push({ where: h.to, at: coords[i + 1], waste: h.d }); });
 
   const milesTitle = hops.filter(h => h.d >= 1).length
     ? "Longest hops:\n" + hops.filter(h => h.d >= 1).sort((a, b) => b.d - a.d).slice(0, 8)
@@ -1501,7 +1539,13 @@ async function renderTripStats() {
     (bogus.length ? stat("\u26a0 " + bogus.length, bogus.length === 1 ? "bad stop" : "bad stops",
        "The route flies out to these and straight back, so they resolved to the wrong "
        + "place. They are inflating the mileage above:\n"
-       + bogus.map(b => `${b.where}: +${mi(b.waste)} phantom mi`).join("\n")
+       + bogus.map(b => {
+           const at = b.at || {};
+           const landed = [at.display, (at.countryCode || "").toUpperCase()].filter(Boolean).join(", ");
+           return `${b.where} \u2192 landed on ${landed || "an unknown spot"} `
+                + `(${at.lat != null ? at.lat.toFixed(2) + ", " + at.lng.toFixed(2) : "?"}) `
+                + `\u2014 +${mi(b.waste)} phantom mi`;
+         }).join("\n")
        + "\n\nFix: Globe tab \u2192 Re-geocode.") : "") +
     stat(legs, legs === 1 ? "leg" : "legs", legsTitle) +
     stat(hotelNights, hotelNights === 1 ? "hotel night" : "hotel nights") +
@@ -2390,13 +2434,13 @@ const IATA_RE = /^[A-Za-z]{3}$/;
 const AIRPORT_WORD_RE = /\bairports?\b/i;
 // Bumped from mpvGeo_ so every coordinate cached by the broken lookup is ignored on sight
 // rather than quietly outliving the fix.
-// Bumped to _3 on 2026-08-20. A cached coordinate is trusted forever and nothing about it
-// looks wrong -- the pin is simply on the wrong continent and the trip total is quietly
-// thousands of miles too high. Every entry written before the offline IATA table existed
-// (when "YUL" resolved to Yuen Long, Hong Kong) is still in this cache, which is why the
-// mileage stayed wrong long after the resolver was fixed. Bumping the prefix retires them.
-const GEO_CACHE_PREFIX = "mpvGeo3_";
 const geoCacheKey = name => GEO_CACHE_PREFIX + name.trim().toLowerCase();
+
+// Bumping the prefix retires the old entries logically, but they still occupy the quota.
+// Sweep them out once on load, or every bump permanently shrinks the room left for the trip.
+for (const k of Object.keys(localStorage)) {
+  if (k.startsWith("mpvGeo") && !k.startsWith(GEO_CACHE_PREFIX)) localStorage.removeItem(k);
+}
 
 // Nominatim's usage policy is ONE request per second, and a fresh trip asks about every
 // city at once. Fired back to back that reads as abuse and the whole origin gets blocked,
