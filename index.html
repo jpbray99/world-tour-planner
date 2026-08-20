@@ -1,0 +1,1943 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>World Tour Planner</title>
+<!-- Globe.gl (MIT, built on Three.js) -- no API key/account needed, unlike Mapbox. -->
+<script src="https://unpkg.com/globe.gl@2"></script>
+<style>
+  :root {
+    --bg: #faf8f5; --panel: #ffffff; --ink: #1c1a17; --ink-dim: #6b6459;
+    --border: #e7e1d8; --accent: #2f6f5e; --accent-dim: #eaf3f0;
+    --bad: #b0392b; --bad-dim: #fbeceb; --warn: #a3760f; --warn-dim: #fbf3e2;
+    /* Single source of truth for timeline geometry -- JS reads these too, so the hour
+       grid and the positioned blocks can never drift apart the way they did when the
+       pixel height was hardcoded in both places. */
+    --hour-h: 34px; --day-head-h: 80px; --hotel-strip-h: 104px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: var(--bg); color: var(--ink); display: flex; height: 100vh; overflow: hidden; }
+
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #chat { width: 340px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--panel);
+    display: flex; flex-direction: column; }
+
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--panel);
+    display: flex; align-items: center; gap: 18px; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 700; }
+  nav { display: flex; gap: 4px; }
+  nav button { border: none; background: transparent; padding: 7px 12px; border-radius: 6px;
+    font-size: 12.5px; font-weight: 600; color: var(--ink-dim); cursor: pointer; }
+  nav button.active { background: var(--accent-dim); color: var(--accent); }
+  header .totals { margin-left: auto; font-size: 12px; color: var(--ink-dim); text-align: right; }
+  header .totals b { color: var(--ink); font-size: 14px; }
+
+  #content { flex: 1; overflow: auto; padding: 20px; min-height: 0; }
+  #view-calendar.active { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input, select, textarea { font-family: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--border);
+    border-radius: 6px; background: #fff; color: var(--ink); }
+  textarea { width: 100%; resize: vertical; }
+  button.btn { font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 13px; border-radius: 6px;
+    border: 1px solid var(--border); background: #fff; color: var(--ink); cursor: pointer; }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.btn.danger { color: var(--bad); }
+  button.icon { border: none; background: transparent; cursor: pointer; color: var(--ink-dim); font-size: 14px; padding: 2px 6px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); margin: 0 0 10px; }
+  .empty { color: var(--ink-dim); font-size: 12.5px; padding: 10px 0; }
+  .muted { color: var(--ink-dim); font-size: 11.5px; }
+  .stat { display: flex; flex-direction: column; padding: 0 12px; border-right: 1px solid var(--border); }
+  .stat:last-child { border-right: none; }
+  .stat b { font-size: 15px; line-height: 1.1; }
+  .stat span { font-size: 9.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .04em; }
+  .sun-line { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; z-index: 1; }
+  .sun-line.sunrise { border-top: 1px dashed #e6b422; }
+  .sun-line.sunset  { border-top: 1px dashed #7a6fb0; }
+  .sun-line span { position: absolute; left: 2px; top: -6px; font-size: 8px; line-height: 1;
+    background: var(--panel); padding: 0 2px; opacity: .85; }
+  .sun-line.sunrise span { color: #a3760f; }
+  .sun-line.sunset span  { color: #5b5390; }
+  .day-meta { font-size: 9px; color: var(--ink-dim); line-height: 1.35; margin-top: 2px; }
+
+  /* Calendar */
+  /* ONE scroll container for both axes so sticky can freeze the ruler (left) and the
+     day + hotel rows (top). With the old split (#content vertical, #calWrap horizontal)
+     there was no single ancestor for sticky to resolve against. */
+  #calWrap { overflow: auto; flex: 1; min-height: 240px; padding-bottom: 8px; outline: none; border-radius: 10px; }
+  #calGrid { position: relative; display: flex; gap: 1px; background: var(--border); border: 1px solid var(--border); width: max-content; }
+  .day-col { width: 158px; background: var(--panel); flex-shrink: 0; }
+  .day-col.selected { box-shadow: inset 0 0 0 2px var(--accent); }
+  .day-col.selected .day-head { background: var(--accent-dim); }
+  .day-head { padding: 10px 12px; border-bottom: 1px solid var(--border); position: relative; }
+  .day-flag { position: absolute; top: 9px; right: 10px; font-size: 16px; line-height: 1; }
+  .day-head .dn { font-size: 12px; font-weight: 700; }
+  .day-head .dd { font-size: 11px; color: var(--ink-dim); }
+  .day-head .loc { font-size: 11.5px; margin-top: 4px; font-weight: 600; color: var(--accent); }
+  .day-body { padding: 8px; min-height: 90px; display: flex; flex-direction: column; gap: 6px; }
+  .slot { border: 1px dashed var(--border); border-radius: 6px; padding: 6px 8px; font-size: 11px; cursor: pointer; }
+  .slot.filled { border-style: solid; background: var(--accent-dim); }
+  .slot .amt { font-weight: 700; }
+  .slot.flight { background: var(--warn-dim); border-color: #e9d6a8; }
+  .add-day { width: 158px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--panel); color: var(--ink-dim); cursor: pointer; font-size: 22px; }
+
+  /* Timeline (vertical 24h) mode */
+  #calGrid.timeline .day-col, #calGrid.timeline .add-day { width: 130px; }
+  #calGrid.timeline .hour-ruler { width: 46px; flex-shrink: 0; background: var(--panel);
+    position: sticky; left: 0; z-index: 8; box-shadow: 1px 0 0 var(--border); }
+  .day-head { position: sticky; top: 0; z-index: 6; background: var(--panel); }
+  .hour-ruler .day-head { z-index: 9; }          /* the corner sits above both frozen bands */
+  .hotel-strip { position: sticky; top: var(--day-head-h); z-index: 5;
+    background: var(--panel); overflow: visible; }
+  .hour-ruler .hotel-strip { z-index: 9; }
+  /* The ruler's header must be EXACTLY as tall as a real day header or every hour line
+     is offset against the blocks beside it. Its own content varies in height (no flag,
+     no location link), so pin it rather than relying on visibility:hidden matching. */
+  #calGrid.timeline .hour-ruler .day-head { visibility: hidden; height: var(--day-head-h); box-sizing: border-box; }
+  #calGrid.timeline .day-head { height: var(--day-head-h); box-sizing: border-box; overflow: hidden; }
+  .hour-row { border-bottom: 1px dotted var(--border); font-size: 9px;
+    color: var(--ink-dim); padding: 1px 4px; box-sizing: border-box; }
+  /* MUST override .day-body's flex: as a flex column the 24 hour-rows were shrunk from
+     34px to 28.25px to make room for sibling children, so every positioned block sat
+     ~2 hours off the ruler beside it. Block layout keeps rows at their true height. */
+  .timeline-body { display: block; position: relative; padding: 0; } /* height set from HOUR_BANDS in JS */
+  .hotel-strip { height: var(--hotel-strip-h); box-sizing: border-box; border-bottom: 1px solid var(--border);
+    padding: 3px 4px; font-size: 10px; cursor: pointer;
+    /* MUST stay visible: the stay card is offset half a column and deliberately overhangs
+       into the next day's column. overflow:hidden here clipped ~59px off every card. */
+    overflow: visible; }
+  .hotel-strip.filled { background: var(--accent-dim); }
+  .stay { position: absolute; left: 50%; top: 2px; width: calc(100% - 6px);
+    height: calc(var(--hotel-strip-h) - 6px); box-sizing: border-box;
+    background: var(--accent-dim); border: 1px solid #cfe3dc; border-radius: 6px;
+    padding: 2px 4px; overflow: hidden; cursor: pointer; }
+  .stay .hotel-name { text-align: center; font-weight: 600; font-size: 9.5px; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Applies to BOTH the legacy in-column strip and the overlay .stay blocks. When this
+     rule named only .hotel-strip, the overlay images had no width/height at all and
+     rendered at natural size (720px) inside a 125px box -- which looked like an extreme
+     zoom because you were seeing a small crop of a full-resolution image. */
+  .hotel-strip .hotel-img, .stay .hotel-img {
+    display: block; width: 100%; height: 82px; object-fit: cover;
+    border-radius: 4px; margin-top: 3px; }
+  .timeline-add { position: absolute; top: 2px; right: 2px; font-size: 11px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; cursor: pointer; z-index: 5; }
+  .tl-block { position: absolute; left: 3px; right: 3px; border-radius: 5px; font-size: 10px; padding: 2px 5px;
+    overflow: hidden; cursor: pointer; border: 1px solid rgba(0,0,0,0.12); line-height: 1.25; }
+  .tl-block.tl-flight { background: var(--warn-dim); }
+  .tl-block.tl-activity { background: var(--accent-dim); }
+  .bookmark { position: absolute; top: 2px; right: 3px; font-size: 10px; line-height: 1;
+    color: #1e7e34; font-weight: 700; }
+
+  #ctxMenu { position: fixed; z-index: 999; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.16); padding: 4px; min-width: 178px; display: none; }
+  #ctxMenu button { display: block; width: 100%; text-align: left; border: none; background: transparent;
+    font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 5px; cursor: pointer; color: var(--ink); }
+  #ctxMenu button:hover { background: var(--accent-dim); }
+  #ctxMenu .sep { height: 1px; background: var(--border); margin: 4px 2px; }
+
+  /* Flight options table */
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border); }
+  th { color: var(--ink-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+
+  /* Compare */
+  .itin-card { display: flex; gap: 14px; align-items: flex-start; }
+  .itin-chip { padding: 3px 9px; background: var(--accent-dim); color: var(--accent); border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+  .cheapest { outline: 2px solid var(--accent); }
+
+  /* Chat */
+  #chatHead { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: space-between; }
+  #chatHead .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  #chatMsgs { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { font-size: 12.5px; line-height: 1.5; padding: 8px 10px; border-radius: 8px; max-width: 92%; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+  .msg.assistant { align-self: flex-start; background: var(--bg); border: 1px solid var(--border); }
+  .msg.sys { align-self: center; color: var(--ink-dim); font-size: 11px; }
+  #chatInputRow { border-top: 1px solid var(--border); padding: 10px; display: flex; gap: 6px; }
+  #chatInputRow textarea { flex: 1; height: 38px; }
+  #settingsBtn { cursor: pointer; }
+
+  dialog { border: none; border-radius: 10px; padding: 20px; width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
+  dialog h3 { margin: 0 0 4px; font-size: 14px; }
+  dialog .muted { margin-bottom: 12px; }
+  dialog label { display: block; font-size: 11.5px; color: var(--ink-dim); margin-top: 10px; }
+  dialog input, dialog select, dialog textarea { width: 100%; margin-top: 3px; }
+  dialog .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  ::backdrop { background: rgba(0,0,0,0.35); }
+
+  /* --- Mobile: this travels with JP, so it has to work on a phone --- */
+  @media (max-width: 820px) {
+    body { flex-direction: column; height: auto; min-height: 100vh; overflow: auto; }
+    header { flex-wrap: wrap; gap: 10px; padding: 10px 12px; }
+    header h1 { font-size: 14px; }
+    nav { order: 3; width: 100%; overflow-x: auto; }
+    header .totals { font-size: 11px; }
+    #content { padding: 10px; overflow: visible; }
+    #view-calendar.active { height: auto; }
+    #calWrap { max-height: 70vh; min-height: 60vh; }
+    /* Narrower day columns so ~3 fit on a phone, and the ruler stays slim. */
+    #calGrid.timeline .day-col, #calGrid.timeline .add-day { width: 108px; }
+    #calGrid.timeline .hour-ruler { width: 34px; }
+    .stat { padding: 0 8px; }
+    .stat b { font-size: 13px; }
+    /* The assistant panel becomes a collapsible drawer instead of a fixed sidebar. */
+    #chat { width: 100%; border-left: none; border-top: 1px solid var(--border);
+      max-height: 45vh; }
+    dialog { width: calc(100vw - 24px); max-height: 88vh; overflow-y: auto; }
+    /* Comfortable tap targets -- 16px input font also stops iOS zooming on focus. */
+    input, select, textarea { font-size: 16px; padding: 8px 10px; }
+    button.btn { padding: 9px 14px; }
+  }
+  @media (max-width: 480px) {
+    #calGrid.timeline .day-col, #calGrid.timeline .add-day { width: 96px; }
+    .day-head { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="main">
+  <header>
+    <h1>World Tour Planner</h1>
+    <nav>
+      <button data-view="calendar" class="active">Calendar</button>
+      <button data-view="options">Flight Options</button>
+      <button data-view="compare">Compare Itineraries</button>
+      <button data-view="globe">Globe</button>
+    </nav>
+    <div class="totals">
+      Home currency total<br/><b id="grandTotal">—</b>
+      <div id="totalSplit" style="font-size:10px;color:var(--ink-dim);visibility:hidden"></div>
+    </div>
+  </header>
+
+  <div id="content">
+    <div class="view active" id="view-calendar">
+      <div class="card row" style="justify-content:space-between">
+        <div class="row" id="tripStats"></div>
+        <div class="row">
+          <label class="muted">Travelers</label>
+          <input id="paxInput" type="number" min="1" step="1" style="width:52px" title="Ticket prices are per person and get multiplied by this in the budget total; hotel prices are per room and don't." />
+          <label class="muted">Home currency</label>
+          <select id="homeCurrency">
+            <option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option>
+            <option>AUD</option><option>JPY</option><option>CHF</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="gap:6px;margin-bottom:6px">
+        <button class="btn" id="calPrevBtn" title="Scroll left (or press ←)">← Prev days</button>
+        <button class="btn" id="calNextBtn" title="Scroll right (or press →)">Next days →</button>
+      </div>
+      <div id="calWrap" tabindex="0"><div id="calGrid"></div></div>
+    </div>
+
+    <div class="view" id="view-options">
+      <div class="card">
+        <h2>Search live flight prices <span class="muted">(via SerpApi/Google Flights — needs a free key, see ⚙)</span></h2>
+        <div class="row">
+          <input id="fsFrom" placeholder="From airport code (YUL)" style="width:150px" maxlength="3" />
+          <input id="fsTo" placeholder="To airport code (NRT)" style="width:150px" maxlength="3" />
+          <input id="fsDate" type="date" />
+          <input id="fsReturnDate" type="date" placeholder="return (optional)" />
+          <button class="btn primary" id="fsSearchBtn">Search</button>
+        </div>
+        <div class="muted" style="margin-top:6px">Airport codes only (3 letters) — Google Flights doesn't take city names here.</div>
+        <div id="fsResults" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <h2>Add a flight price option manually</h2>
+        <div class="row">
+          <input id="optFrom" placeholder="From (e.g. Montreal)" />
+          <input id="optTo" placeholder="To (e.g. Tokyo)" />
+          <input id="optAirline" placeholder="Airline / notes" style="width:160px" />
+          <input id="optPrice" placeholder="Price" type="number" style="width:90px" />
+          <select id="optCurrency"><option>USD</option><option>CAD</option><option>EUR</option><option>GBP</option><option>AUD</option><option>JPY</option></select>
+          <input id="optDate" placeholder="Date / window" style="width:120px" />
+          <button class="btn primary" id="addOptBtn">Add option</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>All route options</h2>
+        <div id="optionsTableWrap"><div class="empty">No flight options yet — add one above.</div></div>
+      </div>
+    </div>
+
+    <div class="view" id="view-compare">
+      <div class="card row" style="justify-content:space-between">
+        <div class="row">
+          <label class="muted">Trip:</label>
+          <select id="itinSelect"></select>
+          <button class="btn" id="newItinBtn">+ New itinerary</button>
+        </div>
+        <button class="btn" id="dupItinBtn">Duplicate current itinerary to compare a re-order</button>
+      </div>
+      <div id="compareList"></div>
+    </div>
+
+    <div class="view" id="view-globe">
+      <div class="card row" style="justify-content:space-between">
+        <div class="muted" id="globeStatus">Showing stops from the current itinerary's day locations, in order.</div>
+        <button class="btn" id="fullscreenBtn">⛶ Fullscreen</button>
+        <button class="btn" id="regeocodeBtn">Re-fetch coordinates</button>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div id="globeViz" style="width:100%;height:560px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="chat">
+  <div id="chatHead">
+    <span><span class="dot" id="bridgeDot" style="background:#bbb"></span>Trip assistant</span>
+    <span id="settingsBtn" title="Bridge settings">⚙</span>
+  </div>
+  <div id="chatMsgs"></div>
+  <div id="chatInputRow">
+    <textarea id="chatInput" placeholder="Ask about this trip…"></textarea>
+    <button class="btn primary" id="chatSend">Send</button>
+  </div>
+</div>
+
+<dialog id="settingsDialog">
+  <h3>Trip assistant settings</h3>
+  <div class="muted">Talks to the Mac bridge already running for Mission Control (localhost:3100) — reuses the same Claude Code agent, billed the same way MC's chat already is.</div>
+  <label>Bridge URL</label>
+  <input id="bridgeUrl" value="http://localhost:3100" />
+  <label>Bridge token</label>
+  <input id="bridgeToken" type="password" placeholder="from .mac-bridge/.env → MAC_BRIDGE_TOKEN" />
+  <div class="foot">
+    <button class="btn" id="settingsCancel">Cancel</button>
+    <button class="btn primary" id="settingsSave">Save</button>
+  </div>
+</dialog>
+
+<div id="ctxMenu"></div>
+
+<dialog id="slotDialog">
+  <h3 id="slotTitle">Edit</h3>
+  <div id="slotBody"></div>
+  <div class="foot">
+    <button class="btn danger" id="slotClear">Clear</button>
+    <button class="btn" id="slotCancel">Cancel</button>
+    <button class="btn primary" id="slotSave">Save</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const STORE_KEY = "worldTourPlannerV1";
+const FX_TTL_MS = 12 * 60 * 60 * 1000;
+const fxMem = { USD: 1 };
+
+function uid() { return Math.random().toString(36).slice(2, 10); }
+
+function loadState() {
+  let s;
+  try { s = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { s = null; }
+  if (!s || typeof s !== "object") s = {};
+  s.homeCurrency = s.homeCurrency || "CAD";
+  s.routeOptions = s.routeOptions || {}; // "from||to" -> [{id,airline,price,currency,date}]
+  s.itineraries = s.itineraries && s.itineraries.length ? s.itineraries : [
+    { id: uid(), name: "Plan A", days: [], pax: 1 }
+  ];
+  s.itineraries.forEach(it => { it.pax = Math.max(1, Number(it.pax) || 1); });
+  // One-time correction: the original flight dialog had no overnight checkbox, so it
+  // wrote overnight:false onto every leg. On a leg whose arrival clock reads EARLIER
+  // than departure that false is an artifact, never a deliberate choice -- clear it so
+  // the arrive<depart inference applies and the arrival lands on the right day.
+  s.itineraries.forEach(it => (it.days || []).forEach(d => {
+    [d.flight, ...(d.transports || [])].forEach(t => {
+      if (t && t.overnight === false && t.departTime && t.arriveTime && t.arriveTime < t.departTime) {
+        delete t.overnight;
+      }
+    });
+  }));
+  s.activeItinId = s.itineraries.find(i => i.id === s.activeItinId) ? s.activeItinId : s.itineraries[0].id;
+  s.bridgeUrl = s.bridgeUrl || "http://localhost:3100";
+  s.bridgeToken = s.bridgeToken || "";
+  s.chatLog = s.chatLog || [];
+  s.calendarView = "timeline"; // JP 2026-08-20: calendar/timeline view permanently, no toggle
+  s.selectedDayId = s.selectedDayId || null;
+  return s;
+}
+let state = loadState();
+function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+function activeItin() { return state.itineraries.find(i => i.id === state.activeItinId); }
+function routeKey(a, b) { return a.trim().toLowerCase() + "||" + b.trim().toLowerCase(); }
+
+// ---------- FX ----------
+async function getUsdRate(cur) {
+  if (cur === "USD") return 1;
+  if (fxMem[cur] != null) return fxMem[cur];
+  const key = "mpvFx_" + cur;
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
+  if (cached && Date.now() - cached.t < FX_TTL_MS) { fxMem[cur] = cached.r; return cached.r; }
+  try {
+    const r = await fetch(`https://api.frankfurter.dev/v1/latest?from=${cur}&to=USD`);
+    const d = await r.json();
+    const rate = d && d.rates && d.rates.USD;
+    if (!rate) return null;
+    fxMem[cur] = rate;
+    localStorage.setItem(key, JSON.stringify({ r: rate, t: Date.now() }));
+    return rate;
+  } catch (e) { return null; }
+}
+async function toHome(amount, currency) {
+  const home = state.homeCurrency;
+  if (currency === home) return amount;
+  const usdRate = await getUsdRate(currency); // currency -> USD
+  if (usdRate == null) return null;
+  const usd = amount * usdRate;
+  if (home === "USD") return usd;
+  const homeUsdRate = await getUsdRate(home); // home -> USD
+  if (homeUsdRate == null) return null;
+  return usd / homeUsdRate;
+}
+
+// ---------- nav ----------
+document.querySelectorAll("nav button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    document.getElementById("view-" + b.dataset.view).classList.add("active");
+    if (b.dataset.view === "options") renderOptions();
+    if (b.dataset.view === "compare") renderCompare();
+    if (b.dataset.view === "globe") renderGlobe();
+  });
+});
+
+// ---------- Calendar ----------
+function addDays(isoDate, n) {
+  return new Date(new Date(isoDate + "T00:00:00").getTime() + n * 86400000).toISOString().slice(0, 10);
+}
+function nightsBetween(inIso, outIso) {
+  if (!inIso || !outIso) return 0;
+  return Math.round((new Date(outIso + "T00:00:00") - new Date(inIso + "T00:00:00")) / 86400000);
+}
+function dateStr(d) { return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }); }
+
+// A compact 0-24h bar with a marker at `hhmm` (each city's OWN local clock -- depart and
+// arrive are never put on one shared bar, since they're different timezones and a single
+// connected segment across them would be meaningless, possibly wrapping nonsensically for
+// a long-haul overnight flight). Shading: morning 6-12 pale yellow, afternoon 12-18 amber,
+// evening/night 18-6 dark -- so "morning or afternoon" reads at a glance, no numbers needed.
+function dayPositionBar(hhmm, label) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  const pct = ((h + m / 60) / 24) * 100;
+  return `<div style="margin-top:3px">
+    <div style="font-size:9.5px;color:var(--ink-dim)">${label} ${hhmm}</div>
+    <div style="position:relative;height:7px;border-radius:4px;overflow:hidden;
+      background:linear-gradient(to right,#2b3550 0%,#2b3550 25%,#fde9b0 25%,#fde9b0 50%,#f0b35c 50%,#f0b35c 75%,#2b3550 75%,#2b3550 100%)">
+      <div style="position:absolute;left:${pct}%;top:-2px;width:2px;height:11px;background:#1c1a17;transform:translateX(-1px)"></div>
+    </div>
+  </div>`;
+}
+
+function renderItinSelect() {
+  const sel = document.getElementById("itinSelect");
+  sel.innerHTML = "";
+  state.itineraries.forEach(i => {
+    const o = document.createElement("option");
+    o.value = i.id; o.textContent = i.name;
+    if (i.id === state.activeItinId) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+document.getElementById("itinSelect").addEventListener("change", e => {
+  state.activeItinId = e.target.value; save(); renderCalendar();
+});
+document.getElementById("newItinBtn").addEventListener("click", () => {
+  const name = prompt("Name this itinerary (e.g. 'Plan B — Oceania first')");
+  if (!name) return;
+  const it = { id: uid(), name, days: [], pax: activeItin().pax || 1 };
+  state.itineraries.push(it);
+  state.activeItinId = it.id;
+  save(); renderItinSelect(); renderCalendar();
+});
+// Selection replaces the old on-screen hint: the highlighted column IS the affordance.
+function selectDay(dayId) {
+  state.selectedDayId = dayId;
+  save();
+  document.querySelectorAll(".day-col[data-day-id]").forEach(c =>
+    c.classList.toggle("selected", c.dataset.dayId === dayId));
+  document.getElementById("calWrap").focus({ preventScroll: true });
+}
+function moveSelection(delta) {
+  const it = activeItin();
+  const i = it.days.findIndex(d => d.id === state.selectedDayId);
+  const next = it.days[Math.max(0, Math.min(it.days.length - 1, (i < 0 ? 0 : i + delta)))];
+  if (!next) return;
+  selectDay(next.id);
+  const col = document.querySelector(`.day-col[data-day-id="${next.id}"]`);
+  const wrap = document.getElementById("calWrap");
+  if (!col) return;
+  // Keep the selected column in view, accounting for the frozen ruler on the left.
+  const rulerW = (document.querySelector(".hour-ruler") || {}).offsetWidth || 0;
+  const left = col.offsetLeft - rulerW - 4;
+  const right = col.offsetLeft + col.offsetWidth - wrap.clientWidth + 4;
+  if (left < wrap.scrollLeft) wrap.scrollLeft = left;
+  else if (right > wrap.scrollLeft) wrap.scrollLeft = right;
+}
+
+const DAY_COL_SCROLL_PX = 158 + 1; // day-col width + grid gap
+// Direct scrollLeft assignment, NOT scrollBy({behavior:"smooth"}): the smooth path was
+// measured to be a silent no-op here (and CSS scroll-behavior:smooth made even direct
+// assignment fail until it was removed). An instant jump that always works beats an
+// animation that sometimes does nothing.
+function scrollDays(n) {
+  const wrap = document.getElementById("calWrap");
+  const step = (document.querySelector(".day-col")?.offsetWidth || 130) + 1;
+  const max = wrap.scrollWidth - wrap.clientWidth;
+  wrap.scrollLeft = Math.max(0, Math.min(max, wrap.scrollLeft + n * step));
+}
+document.getElementById("calPrevBtn").addEventListener("click", () => scrollDays(-3));
+document.getElementById("calNextBtn").addEventListener("click", () => scrollDays(3));
+document.getElementById("calWrap").addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft") { e.preventDefault(); moveSelection(-1); }
+  if (e.key === "ArrowRight") { e.preventDefault(); moveSelection(1); }
+});
+
+document.getElementById("homeCurrency").addEventListener("change", e => {
+  state.homeCurrency = e.target.value; save(); renderCalendar();
+});
+document.getElementById("paxInput").addEventListener("change", e => {
+  activeItin().pax = Math.max(1, parseInt(e.target.value, 10) || 1); save(); renderCalendar();
+});
+
+function addDay() {
+  const it = activeItin();
+  const last = it.days[it.days.length - 1];
+  const nextDate = last ? new Date(new Date(last.date).getTime() + 86400000) : new Date();
+  it.days.push({ id: uid(), date: nextDate.toISOString().slice(0, 10), location: last ? last.location : "", hotel: null, flight: null, activities: [] });
+  save(); renderCalendar();
+}
+
+// One business-expense control shared by the hotel / transport / activity dialogs, so
+// the field means the same thing everywhere and the totals can split on it.
+function bookingFieldsHtml(prefix, rec, refLabel) {
+  const r = rec || {};
+  return `
+    <label class="muted" style="display:flex;align-items:center;gap:6px;margin-top:12px;cursor:pointer;font-weight:600;color:var(--ink)">
+      <input id="${prefix}_booked" type="checkbox" ${r.booked ? "checked" : ""} style="width:auto" />
+      Booked / confirmed</label>
+    <div class="row">
+      <div style="flex:1"><label class="muted">Confirmation #</label>
+        <input id="${prefix}_conf" value="${(r.confirmation || "").replace(/"/g, "&quot;")}" placeholder="ABC123" /></div>
+      <div style="flex:1"><label class="muted">${refLabel}</label>
+        <input id="${prefix}_ref" value="${(r.reference || "").replace(/"/g, "&quot;")}" placeholder="" /></div>
+    </div>
+    <label class="muted">Info / notes (address, terminal, contact…)</label>
+    <textarea id="${prefix}_info" rows="2">${r.info || ""}</textarea>`;
+}
+function readBookingFields(prefix) {
+  const g = id => document.getElementById(prefix + "_" + id);
+  return {
+    booked: !!(g("booked") && g("booked").checked),
+    confirmation: g("conf") ? g("conf").value.trim() : "",
+    reference: g("ref") ? g("ref").value.trim() : "",
+    info: g("info") ? g("info").value.trim() : "",
+  };
+}
+
+function bizFieldsHtml(prefix, rec) {
+  const on = !!(rec && rec.business);
+  const pct = (rec && rec.businessPct != null) ? rec.businessPct : 100;
+  return `
+    <label class="muted" style="display:flex;align-items:center;gap:6px;margin-top:10px;cursor:pointer">
+      <input id="${prefix}_biz" type="checkbox" ${on ? "checked" : ""} style="width:auto" />
+      Business expense</label>
+    <div id="${prefix}_bizRow" style="${on ? "" : "display:none"}">
+      <label class="muted">Business portion</label>
+      <select id="${prefix}_bizPct">
+        ${[100, 75, 50, 25].map(v => `<option value="${v}" ${pct === v ? "selected" : ""}>${v}%</option>`).join("")}
+      </select>
+    </div>`;
+}
+function wireBizFields(prefix) {
+  const cb = document.getElementById(prefix + "_biz");
+  const row = document.getElementById(prefix + "_bizRow");
+  if (!cb || !row) return;
+  cb.addEventListener("change", () => { row.style.display = cb.checked ? "" : "none"; });
+}
+function readBizFields(prefix) {
+  const cb = document.getElementById(prefix + "_biz");
+  if (!cb) return { business: false, businessPct: 100 };
+  return {
+    business: cb.checked,
+    businessPct: parseInt((document.getElementById(prefix + "_bizPct") || {}).value, 10) || 100,
+  };
+}
+
+function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
+  const it = activeItin();
+  const day = it.days.find(d => d.id === dayId);
+  const dlg = document.getElementById("slotDialog");
+  dlg.dataset.activityId = activityId || "";
+  dlg.dataset.transportId = (kind === "transport" ? (activityId || "") : "");
+  const body = document.getElementById("slotBody");
+  const titles = { hotel: "Hotel \u2014 ", flight: "Flight \u2014 ", transport: "Transport \u2014 ", activity: "Activity \u2014 ", location: "Location \u2014 ", date: "Date \u2014 " };
+  document.getElementById("slotTitle").textContent = (titles[kind] || "") + day.date;
+
+  if (kind === "transport") {
+    // Look in dayTransports(), not day.transports: a leg saved through the original
+    // flight dialog lives in the legacy day.flight slot with id "legacy" and would never
+    // be found here -- the dialog then opened blank and silently discarded the real
+    // times/price/operator on save (JP hit exactly this).
+    const existing = dayTransports(day).find(t => t.id === activityId) || {};
+    const t = existing.id ? existing : (presetType ? { type: presetType } : {});
+    const idx = it.days.findIndex(d => d.id === dayId);
+    const inferredFrom = t.from || (idx > 0 ? it.days[idx - 1].location : "") || day.location || "";
+    const inferredTo = t.to || "";
+    // Pre-check overnight when the arrival clock reads earlier than departure -- the
+    // usual red-eye case -- but leave it editable, because a westbound leg really can
+    // land "earlier" on the same day.
+    const preOvernight = t.overnight !== undefined ? t.overnight
+      : !!(t.departTime && t.arriveTime && t.arriveTime < t.departTime);
+    body.innerHTML = `
+      <label class="muted">Type</label>
+      <select id="t_type">${Object.entries(TRANSPORT_META).map(([k, m]) =>
+        `<option value="${k}" ${(t.type || presetType || "flight") === k ? "selected" : ""}>${m.icon} ${m.label}</option>`).join("")}</select>
+      <div class="row">
+        <div style="flex:1"><label class="muted">From</label><input id="t_from" value="${inferredFrom}" placeholder="Montreal" /></div>
+        <div style="flex:1"><label class="muted">To (sets next day's location)</label><input id="t_to" value="${inferredTo}" placeholder="Barcelona" /></div>
+      </div>
+      <div class="row">
+        <div style="flex:1"><label class="muted">Depart (local to From)</label><input id="t_depart" type="time" value="${t.departTime || presetTime || ""}" /></div>
+        <div style="flex:1"><label class="muted">Arrive (local to To)</label><input id="t_arrive" type="time" value="${t.arriveTime || ""}" /></div>
+      </div>
+      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px">
+        <input id="t_overnight" type="checkbox" ${preOvernight ? "checked" : ""} style="width:auto" />
+        Lands the NEXT day \u2014 arrival shows on the following day's column</label>
+      <div class="row">
+        <div style="flex:1"><label class="muted">Price PER PERSON (\u00d7${it.pax} in budget)</label><input id="t_price" type="number" value="${t.price != null ? t.price : ""}" /></div>
+        <div><label class="muted">Currency</label><select id="t_cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${t.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
+      </div>
+      <label class="muted">Operator / notes</label>
+      <input id="t_op" value="${t.airline || t.operator || ""}" placeholder="Air Canada, Renfe, ..." />
+      ${bookingFieldsHtml("t", t, "Flight / train #")}
+      ${bizFieldsHtml("t", t)}`;
+    wireBizFields("t");
+  } else if (kind === "activity") {
+    const a = (day.activities || []).find(x => x.id === activityId) || {};
+    body.innerHTML = `
+      <label class="muted">What is it? (activity, dinner reservation, museum, tour…)</label>
+      <input id="a_name" value="${a.name || ""}" placeholder="e.g. Dinner at Tickets" />
+      <div class="row">
+        <div style="flex:1"><label class="muted">Start (local time in ${day.location || "this city"})</label><input id="a_start" type="time" value="${a.startTime || presetTime || ""}" /></div>
+        <div style="flex:1"><label class="muted">End (optional)</label><input id="a_end" type="time" value="${a.endTime || ""}" /></div>
+      </div>
+      <label class="muted">Cost (optional) — per person</label>
+      <div class="row">
+        <input id="a_price" type="number" value="${a.price || ""}" placeholder="0" style="width:100px" />
+        <select id="a_cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${a.currency===c?"selected":""}>${c}</option>`).join("")}</select>
+      </div>
+      <label class="muted">Notes (confirmation number, address…)</label>
+      <textarea id="a_notes" rows="2">${a.notes || ""}</textarea>
+      ${bookingFieldsHtml("a", a, "Reservation name")}
+      ${bizFieldsHtml("a", a)}`;
+    wireBizFields("a");
+  } else if (kind === "date") {
+    body.innerHTML = `<label class="muted">Date for this day. Changing it shifts every LATER day by the same amount, so the trip stays in order.</label><input id="f_date" type="date" value="${day.date}" />`;
+  } else if (kind === "location") {
+    body.innerHTML = `
+      <label class="muted">Location for this day</label>
+      <input id="f_loc" value="${day.location || ""}" placeholder="City" />
+      <label class="muted">Second location (optional \u2014 half the day somewhere else)</label>
+      <input id="f_loc2" value="${day.location2 || ""}" placeholder="e.g. Girona" />`;
+  } else if (kind === "hotel") {
+    const h = day.hotel || {};
+    body.innerHTML = `
+      <label class="muted">Search by hotel name (via SerpApi/Google Hotels — needs a free key, see ⚙)</label>
+      <div class="row"><input id="f_search" placeholder="e.g. W Barcelona" style="flex:1" /><button class="btn" id="f_searchBtn" type="button">Search</button></div>
+      <div id="f_searchResults"></div>
+      <label class="muted" style="margin-top:10px">Name / notes</label><input id="f_name" value="${h.name || ""}" />
+      <label class="muted">City (sets the location for every night of this stay)</label>
+      <input id="f_city" value="${day.location || ""}" placeholder="Barcelona" />
+      <div class="row">
+        <div style="flex:1"><label class="muted">Check in</label>
+          <input id="f_checkin" type="date" value="${h.checkIn || day.date}" /></div>
+        <div style="flex:1"><label class="muted">Check out</label>
+          <input id="f_checkout" type="date" value="${h.checkOut || addDays(h.checkIn || day.date, h.nights || 1)}" /></div>
+      </div>
+      <div id="f_nightsOut" class="muted"></div>
+      <label class="muted">Price / night</label><input id="f_price" type="number" value="${h.price || ""}" />
+      <label class="muted">Currency</label><select id="f_cur">${["USD","CAD","EUR","GBP","AUD","JPY"].map(c=>`<option ${h.currency===c?"selected":""}>${c}</option>`).join("")}</select>
+      <label class="muted">Photo — paste a LISTING link (Airbnb, Booking, hotel site) or a direct image URL</label>
+      <div class="row">
+        <input id="f_photo" value="${h.photoUrl || ""}" placeholder="https://airbnb.ca/rooms/… or https://…jpg" style="flex:1" />
+        <button class="btn" id="f_fetchPhoto" type="button">Fetch</button>
+      </div>
+      <div id="f_photoStatus" class="muted"></div>
+      ${bookingFieldsHtml("f", h, "Booking ref")}
+      ${bizFieldsHtml("f", h)}
+      <img id="f_photoPreview" src="${h.photoUrl || ""}" data-pos="${h.photoPos != null ? h.photoPos : 50}"
+        style="width:100%;height:90px;object-fit:cover;object-position:50% ${h.photoPos != null ? h.photoPos : 50}%;border-radius:6px;margin-top:6px;cursor:grab;${h.photoUrl ? "" : "display:none"}"
+        onerror="this.style.display='none'" onload="this.style.display='block'"/>
+      <div class="muted" id="f_posHint">Drag the photo up or down to choose the part that shows on the calendar.</div>`;
+    document.getElementById("f_photo").addEventListener("input", e => {
+      document.getElementById("f_photoPreview").src = e.target.value;
+    });
+    const syncNights = () => {
+      const n = nightsBetween(document.getElementById("f_checkin").value, document.getElementById("f_checkout").value);
+      const out = document.getElementById("f_nightsOut");
+      out.textContent = n > 0 ? `${n} night${n > 1 ? "s" : ""} \u2014 the stay and its city fill every one of those days`
+                              : "Check out must be after check in.";
+    };
+    document.getElementById("f_checkin").addEventListener("change", () => {
+      // Keep the stay length steady when check-in moves, rather than silently
+      // shortening or inverting the range.
+      const ci = document.getElementById("f_checkin"), co = document.getElementById("f_checkout");
+      if (nightsBetween(ci.value, co.value) < 1) co.value = addDays(ci.value, 1);
+      syncNights();
+    });
+    document.getElementById("f_checkout").addEventListener("change", syncNights);
+    syncNights();
+    document.getElementById("f_searchBtn").addEventListener("click", () => searchHotel(day));
+    wireBizFields("f");
+    enablePhotoDrag(document.getElementById("f_photoPreview"));
+    document.getElementById("f_fetchPhoto").addEventListener("click", resolvePhotoFromLink);
+    document.getElementById("f_photo").addEventListener("paste", () => setTimeout(() => {
+      const v = document.getElementById("f_photo").value.trim();
+      if (v && !/\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(v)) resolvePhotoFromLink();
+    }, 50));
+  } else {
+    const f = day.flight || {};
+    const options = allOptionsFlat();
+    const idx = it.days.findIndex(d => d.id === dayId);
+    const inferredFrom = idx > 0 ? it.days[idx - 1].location : "";
+    const inferredTo = day.location || "";
+    body.innerHTML = `
+      <label class="muted">Pick a stored flight option (from Flight Options tab)</label>
+      <select id="f_pick"><option value="">— manual entry —</option>${options.map(o=>`<option value="${o.id}" ${f.optionId===o.id?"selected":""}>${o.from} → ${o.to}: ${o.airline||"?"} — ${money(o.price, o.currency)}</option>`).join("")}</select>
+      <label class="muted">Or manual: airline / price / currency</label>
+      <div class="row"><input id="f_air" placeholder="airline" value="${f.airline||""}" style="flex:1"/><input id="f_price" type="number" placeholder="price" value="${f.price||""}" style="width:90px"/><select id="f_cur">${["USD","CAD","EUR","GBP","AUD","JPY"].map(c=>`<option ${f.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
+      <label class="muted" style="margin-top:10px">From city (departure timezone)</label>
+      <input id="f_from" value="${f.from || inferredFrom}" placeholder="e.g. Barcelona" />
+      <label class="muted">To city (arrival timezone — sets NEXT day's location too)</label>
+      <input id="f_to" value="${f.to || inferredTo}" placeholder="e.g. Rome" />
+      <div class="row">
+        <div style="flex:1"><label class="muted">Depart (local to From)</label><input id="f_depart" type="time" value="${f.departTime || ""}" /></div>
+        <div style="flex:1"><label class="muted">Arrive (local to To)</label><input id="f_arrive" type="time" value="${f.arriveTime || ""}" /></div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input id="f_overnight" type="checkbox" ${(f.overnight !== undefined ? f.overnight : (f.departTime && f.arriveTime && f.arriveTime < f.departTime)) ? "checked" : ""} style="width:auto" />
+          Lands the NEXT day (overnight) — shows the arrival on the following day's column</label>
+      </div>`;
+  }
+  dlg.dataset.dayId = dayId; dlg.dataset.kind = kind;
+  dlg.showModal();
+}
+function allOptionsFlat() {
+  const out = [];
+  for (const key in state.routeOptions) {
+    const [from, to] = key.split("||");
+    state.routeOptions[key].forEach(o => out.push({ ...o, from, to }));
+  }
+  return out;
+}
+
+document.getElementById("slotSave").addEventListener("click", async () => {
+  const dlg = document.getElementById("slotDialog");
+  const it = activeItin();
+  const day = it.days.find(d => d.id === dlg.dataset.dayId);
+  const kind = dlg.dataset.kind;
+  if (kind === "transport") {
+    day.transports = day.transports || [];
+    const id = dlg.dataset.transportId;
+    const to = document.getElementById("t_to").value.trim();
+    const rec = {
+      id: id || uid(),
+      type: document.getElementById("t_type").value,
+      from: document.getElementById("t_from").value.trim(),
+      to,
+      departTime: document.getElementById("t_depart").value,
+      arriveTime: document.getElementById("t_arrive").value,
+      overnight: document.getElementById("t_overnight").checked,
+      price: parseFloat(document.getElementById("t_price").value),
+      currency: document.getElementById("t_cur").value,
+      operator: document.getElementById("t_op").value.trim(),
+      ...readBizFields("t"),
+      ...readBookingFields("t"),
+    };
+    if (isNaN(rec.price)) rec.price = null;
+    if (!rec.from && !rec.to && !rec.departTime) {
+      day.transports = day.transports.filter(x => x.id !== id); // blank = delete
+    } else if (id && id !== "legacy") {
+      const i = day.transports.findIndex(x => x.id === id);
+      if (i >= 0) day.transports[i] = rec; else day.transports.push(rec);
+    } else if (id === "legacy") {
+      day.flight = { ...day.flight, ...rec }; // keep editing the legacy single-flight record in place
+    } else {
+      day.transports.push(rec);
+    }
+    if (to) {
+      const i2 = it.days.findIndex(d => d.id === day.id);
+      if (i2 >= 0 && i2 + 1 < it.days.length) it.days[i2 + 1].location = to;
+    }
+  } else if (kind === "activity") {
+    day.activities = day.activities || [];
+    const existingId = dlg.dataset.activityId;
+    const name = document.getElementById("a_name").value.trim();
+    const rec = {
+      id: existingId || uid(),
+      name,
+      startTime: document.getElementById("a_start").value,
+      endTime: document.getElementById("a_end").value,
+      price: parseFloat(document.getElementById("a_price").value) || null,
+      currency: document.getElementById("a_cur").value,
+      notes: document.getElementById("a_notes").value.trim(),
+      ...readBizFields("a"),
+      ...readBookingFields("a"),
+    };
+    if (!name && !rec.startTime) {
+      day.activities = day.activities.filter(x => x.id !== existingId); // blank = delete
+    } else if (existingId) {
+      const i = day.activities.findIndex(x => x.id === existingId);
+      if (i >= 0) day.activities[i] = rec; else day.activities.push(rec);
+    } else {
+      day.activities.push(rec);
+    }
+  } else if (kind === "date") {
+    const newDate = document.getElementById("f_date").value;
+    if (newDate && newDate !== day.date) {
+      const deltaMs = new Date(newDate + "T00:00:00") - new Date(day.date + "T00:00:00");
+      const startIdx = it.days.findIndex(d => d.id === day.id);
+      for (let i = startIdx; i < it.days.length; i++) {
+        it.days[i].date = new Date(new Date(it.days[i].date + "T00:00:00").getTime() + deltaMs).toISOString().slice(0, 10);
+      }
+    }
+  } else if (kind === "location") {
+    day.location = document.getElementById("f_loc").value.trim();
+    day.location2 = document.getElementById("f_loc2").value.trim();   // max two, by design
+  } else if (kind === "hotel") {
+    const price = parseFloat(document.getElementById("f_price").value);
+    const hname = document.getElementById("f_name").value.trim();
+    let photoUrl = document.getElementById("f_photo").value.trim();
+    if (photoUrl && /^https?:\/\//i.test(photoUrl) && !/\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(photoUrl)) {
+      await resolvePhotoFromLink();                       // forgetting Fetch shouldn't lose the photo
+      photoUrl = document.getElementById("f_photo").value.trim();
+    }
+    // A hotel with a name but no price yet is a real, savable state (JP hit this: he
+    // entered a name + Airbnb link, left price blank, and the whole record vanished).
+    const city = document.getElementById("f_city").value.trim();
+    const checkIn = document.getElementById("f_checkin").value || day.date;
+    let checkOut = document.getElementById("f_checkout").value;
+    if (nightsBetween(checkIn, checkOut) < 1) checkOut = addDays(checkIn, 1);
+    const nights = nightsBetween(checkIn, checkOut);
+    const rec = (hname || photoUrl || !isNaN(price))
+      ? { name: hname, price: isNaN(price) ? null : price, currency: document.getElementById("f_cur").value,
+          photoUrl, nights, checkIn, checkOut,
+          photoPos: parseFloat(document.getElementById("f_photoPreview").dataset.pos) || 50,
+          ...readBizFields("f"), ...readBookingFields("f") }
+      : null;
+
+    // Anchor to the CHECK-IN date, not the column that was clicked -- check-in is
+    // editable, so the stay must be able to land on a different day than the one used
+    // to open the dialog. If the row was cleared, clear the whole previous span.
+    const prev = day.hotel;
+    if (!rec && prev && prev.checkIn) {
+      it.days.forEach(x => { if (x.date >= prev.checkIn && x.date < prev.checkOut) x.hotel = null; });
+    } else if (!rec) {
+      day.hotel = null;
+    } else {
+      it.days.forEach(x => {
+        if (x.date >= checkIn && x.date < checkOut) {
+          x.hotel = { ...rec };
+          if (city) x.location = city;
+        }
+      });
+      // Moving check-in later can strand the stay on days it no longer covers.
+      if (prev && prev.checkIn) {
+        it.days.forEach(x => {
+          if (x.date >= prev.checkIn && x.date < prev.checkOut && !(x.date >= checkIn && x.date < checkOut)) x.hotel = null;
+        });
+      }
+    }
+  } else {
+    const pick = document.getElementById("f_pick").value;
+    const from = document.getElementById("f_from").value.trim();
+    const to = document.getElementById("f_to").value.trim();
+    const departTime = document.getElementById("f_depart").value;
+    const arriveTime = document.getElementById("f_arrive").value;
+    const overnight = document.getElementById("f_overnight").checked;
+    if (pick) {
+      const opt = allOptionsFlat().find(o => o.id === pick);
+      day.flight = { optionId: opt.id, airline: opt.airline, price: opt.price, currency: opt.currency, from: from || opt.from, to: to || opt.to, departTime, arriveTime, overnight };
+    } else {
+      const price = parseFloat(document.getElementById("f_price").value);
+      day.flight = price ? { airline: document.getElementById("f_air").value, price, currency: document.getElementById("f_cur").value, from, to, departTime, arriveTime, overnight } : null;
+    }
+    // "so I don't have to manually add the destination every time" -- JP, 2026-08-20.
+    if (day.flight && day.flight.to) {
+      const it2 = activeItin();
+      const idx2 = it2.days.findIndex(d => d.id === day.id);
+      if (idx2 >= 0 && idx2 + 1 < it2.days.length) it2.days[idx2 + 1].location = day.flight.to;
+    }
+  }
+  save(); dlg.close(); renderCalendar();
+});
+document.getElementById("slotClear").addEventListener("click", () => {
+  const dlg = document.getElementById("slotDialog");
+  const it = activeItin();
+  const day = it.days.find(d => d.id === dlg.dataset.dayId);
+  if (dlg.dataset.kind === "hotel") day.hotel = null;
+  if (dlg.dataset.kind === "flight") day.flight = null;
+  save(); dlg.close(); renderCalendar();
+});
+document.getElementById("slotCancel").addEventListener("click", () => document.getElementById("slotDialog").close());
+
+// Hours are NOT uniform height: dead-of-night hours are squeezed and the evening is
+// given room, so a 60-day trip stays scannable without losing the times that matter
+// (JP, 2026-08-20). Everything below derives from this one table -- the ruler rows and
+// the positioned blocks both read it, so they cannot drift apart.
+const HOUR_BANDS = [
+  { from: 0,  to: 6,  h: 15 },   // 00:00-06:00  compressed (asleep)
+  { from: 6,  to: 21, h: 54 },   // 06:00-21:00  waking day (15% shorter, JP 2026-08-20)
+  { from: 21, to: 24, h: 15 },   // 21:00-24:00  compressed
+];
+function hourHeightFor(hour) {
+  const b = HOUR_BANDS.find(x => hour >= x.from && hour < x.to);
+  return b ? b.h : 34;
+}
+const DAY_TOTAL_PX = Array.from({ length: 24 }, (_, h) => hourHeightFor(h)).reduce((a, b) => a + b, 0);
+function hourTopPx(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  let px = 0;
+  for (let i = 0; i < Math.min(h, 24); i++) px += hourHeightFor(i);
+  if (h < 24 && m) px += (m / 60) * hourHeightFor(h);
+  return px;
+}
+function pxToTime(px) {
+  let acc = 0;
+  for (let h = 0; h < 24; h++) {
+    const hh = hourHeightFor(h);
+    if (px < acc + hh) {
+      const mins = Math.round(((px - acc) / hh) * 60 / 15) * 15;   // snap to 15 min
+      const m = Math.min(45, Math.max(0, mins));
+      return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+    }
+    acc += hh;
+  }
+  return "23:45";
+}
+
+// Kept for the few call sites that want "one hour tall" as a minimum block size.
+function hourHeightPx() { return 34; }
+function bookedMark(rec) { return rec && rec.booked ? '<span class="bookmark">\u2713</span>' : ""; }
+
+function timelineBlockHtml(kind, startTime, endTime, label, sub, title, rec) {
+  if (!startTime) return "";
+  let top = hourTopPx(startTime);
+  let bottom = endTime ? hourTopPx(endTime) : top + hourHeightPx();
+  // An end time that reads numerically earlier than start (overnight/cross-timezone
+  // flight, measured on this day's own clock) is clamped to end-of-day rather than
+  // wrapped -- an honest simplification, not a real negative-height block.
+  if (bottom <= top) bottom = DAY_TOTAL_PX;
+  const height = Math.max(bottom - top, 16);
+  return `<div class="tl-block tl-${kind}" style="top:${top}px;height:${height}px" title="${title || ""}">
+    ${bookedMark(rec)}<b>${label}</b>${sub ? `<br/>${sub}` : ""}
+  </div>`;
+}
+
+function dayHeadHtml(day, idx) {
+  const d = new Date(day.date + "T00:00:00");
+  return `
+    <div class="day-head">
+      <span class="day-flag">
+        <span data-flag-for="${(day.location || "").trim().toLowerCase()}"></span><span data-flag-for="${(day.location2 || "").trim().toLowerCase()}"></span>
+      </span>
+      <div class="dn">Day ${idx + 1}</div>
+      <div class="dd" data-act="date" style="cursor:pointer;text-decoration:underline dotted" title="Click to change this date">${dateStr(d)}</div>
+      <div class="loc" data-act="location">${day.location ? (day.location + (day.location2 ? " | " + day.location2 : "")) : "+ set location"}</div>
+      <div class="day-meta" data-meta-for="${(day.location || "").trim().toLowerCase()}|${day.date}"></div>
+    </div>`;
+}
+
+function dayBodyCompactHtml(day) {
+  return `
+    <div class="day-body">
+      <div class="slot ${day.flight ? "filled flight" : ""}" data-act="flight">
+        ${day.flight ? `✈ ${day.flight.from || ""}→${day.flight.to || ""}<br/><span class="amt">${day.flight.price} ${day.flight.currency}</span>
+          ${day.flight.departTime ? `<div class="muted" style="margin-top:2px">${day.flight.departTime}${day.flight.arriveTime ? " → " + day.flight.arriveTime : ""} <span class="muted">(switch to Timeline view for the visual)</span></div>` : ""}` : "+ flight"}
+      </div>
+      <div class="slot ${day.hotel ? "filled" : ""}" data-act="hotel">
+        ${day.hotel ? `${day.hotel.photoUrl ? `<img src="${day.hotel.photoUrl}" style="width:100%;height:54px;object-fit:cover;border-radius:4px;margin-bottom:4px;display:block" onerror="this.style.display='none'"/>` : ""}${day.hotel.name || ""}<br/><span class="amt">${money(day.hotel.price, day.hotel.currency)}/nt</span>` : "+ hotel"}
+      </div>
+    </div>`;
+}
+
+// An overnight flight (Montreal 18:35 -> Barcelona 08:00 next morning) cannot be one
+// block: the two times live on different days AND different clocks. So it renders as
+// TWO blocks -- departure on the day it leaves, arrival on the day it lands -- each at
+// its own city's local time, which is what "arrive 8am Oct 5 from my 6:35pm flight"
+// actually needs to look like. `overnight` on the flight marks it; without it, a same-day
+// flight still renders as one continuous block.
+// A transport leg whose arrival lands on the NEXT day (overnight red-eye). Never
+// INFERRED from times alone: a westbound flight genuinely lands earlier by the clock
+// on the same day (Tokyo 17:00 -> LA 10:00), so only the explicit flag decides.
+// The dialog pre-checks the box when arrive < depart, which is the common case.
+function arrivesNextDay(t) {
+  if (!t || !t.departTime || !t.arriveTime) return false;
+  if (t.overnight === true) return true;
+  if (t.overnight === false) return false; // explicit override: westbound legs really can
+                                           // land earlier by the clock on the SAME day
+  // Not set either way: an arrival clock EARLIER than departure cannot be same-day
+  // (18:35 -> 08:00 would be a negative duration), so next-day is the only reading that
+  // renders honestly. This is the red-eye default; the dialog checkbox overrides it.
+  return t.arriveTime < t.departTime;
+}
+
+const TRANSPORT_META = {
+  flight: { icon: "\u2708", label: "Flight" },
+  train:  { icon: "\ud83d\ude86", label: "Train" },
+  taxi:   { icon: "\ud83d\ude95", label: "Taxi / car" },
+  ferry:  { icon: "\u26f4", label: "Ferry" },
+  bus:    { icon: "\ud83d\ude8c", label: "Bus" },
+};
+
+// Every leg on a day, normalized. day.flight is the legacy single-flight shape kept
+// working; day.transports is the general list (train/taxi/ferry/bus/extra flights).
+function dayTransports(day) {
+  const list = [];
+  if (day.flight) list.push({ ...day.flight, id: day.flight.id || "legacy", type: day.flight.type || "flight", _legacy: true });
+  (day.transports || []).forEach(t => list.push(t));
+  return list;
+}
+
+const CURRENCY_SYMBOL = { USD: "$", CAD: "$", EUR: "\u20ac", GBP: "\u00a3", AUD: "$", JPY: "\u00a5", CHF: "CHF " };
+function money(v, cur) {
+  if (v == null) return "";
+  const sym = CURRENCY_SYMBOL[cur] || (cur ? cur + " " : "");
+  return sym + Number(v).toLocaleString();
+}
+
+// The per-column strip is now just a SPACER reserving the band's height. Real stays are
+// drawn in #hotelOverlay, offset half a column, because a hotel night straddles midnight:
+// you wake up in one hotel and go to bed in the next (JP, 2026-08-20). Aligning a stay to
+// day boundaries implied you changed hotel at 00:00, which nobody does.
+function hotelStripHtml(day) {
+  const h = day.hotel;
+  if (!h) return `<div class="hotel-strip" data-act="hotel">+ hotel</div>`;
+  const priceTxt = h.price != null ? ` \u2014 ${money(h.price, h.currency)}` : "";
+  // left:50% is the half-column offset -- the night straddles midnight, so it starts
+  // the EVENING of this day. Rendered in-column (not as an overlay) so the whole hotel
+  // row can be position:sticky and stay frozen while the grid scrolls.
+  return `<div class="hotel-strip" data-act="hotel">
+    <div class="stay" style="position:absolute">
+      ${bookedMark(h)}
+      <div class="hotel-name">${h.name || "Hotel"}${priceTxt}</div>
+      ${h.photoUrl ? `<img class="hotel-img" src="${h.photoUrl}" style="object-position:50% ${h.photoPos != null ? h.photoPos : 50}%" onerror="this.style.display='none'"/>` : ""}
+    </div>
+  </div>`;
+}
+
+// Group consecutive days that share the same stay into one block.
+function staysFor(it) {
+  const out = [];
+  it.days.forEach((d, i) => {
+    if (!d.hotel) return;
+    const prev = out[out.length - 1];
+    const sameAsPrev = prev && prev.endIdx === i - 1 &&
+      prev.hotel.name === d.hotel.name && prev.hotel.checkIn === d.hotel.checkIn;
+    if (sameAsPrev) prev.endIdx = i;
+    else out.push({ startIdx: i, endIdx: i, hotel: d.hotel, dayId: d.id });
+  });
+  return out;
+}
+
+function dayBodyTimelineHtml(day, prevDay) {
+  let blocks = "";
+
+  // Arrival half of yesterday's overnight leg, landing on THIS day at ITS local time.
+  if (prevDay) {
+    dayTransports(prevDay).forEach(t => {
+      if (!arrivesNextDay(t)) return;
+      const m = TRANSPORT_META[t.type] || TRANSPORT_META.flight;
+      // Fills midnight -> arrival, the way a calendar renders the tail of a multi-day
+      // event, so the leg reads as continuous across the two columns.
+      blocks += timelineBlockHtml("flight", "00:00", t.arriveTime,
+        `\ud83d\udeec arrive ${t.to || "?"} ${t.arriveTime}`,
+        `overnight from ${t.from || "?"}`,
+        `Departed ${t.from || "?"} ${t.departTime || ""} the previous day (${m.label})`, t);
+    });
+  }
+
+  dayTransports(day).forEach(t => {
+    if (!t.departTime) return;
+    const m = TRANSPORT_META[t.type] || TRANSPORT_META.flight;
+    const overnight = arrivesNextDay(t);
+    blocks += `<div data-act="transport-edit" data-transport-id="${t.id}" style="display:contents">${timelineBlockHtml(
+      "flight",
+      t.departTime,
+      overnight ? "24:00" : t.arriveTime,
+      `${m.icon} ${t.from || "?"}\u2192${t.to || "?"}`,
+      // Price is always per person; no label needed, JP knows (2026-08-20).
+      (overnight ? `dep ${t.departTime} \u2014 lands next day ${t.arriveTime || ""}`
+                 : `${t.departTime}${t.arriveTime ? "\u2013" + t.arriveTime : ""}`)
+        + (t.price != null ? `<br/><b>${money(t.price, t.currency)}</b>` : ""),
+      "Each time is its own city's local clock.", t)}</div>`;
+  });
+
+  (day.activities || []).forEach(a => {
+    blocks += `<div data-act="activity-edit" data-activity-id="${a.id}" style="display:contents">${timelineBlockHtml(
+      "activity", a.startTime, a.endTime, a.name || "Activity",
+      a.startTime + (a.endTime ? "\u2013" + a.endTime : ""), a.info || a.notes || "", a)}</div>`;
+  });
+
+  return hotelStripHtml(day) + `<div class="timeline-body">${blocks}</div>`;
+}
+
+function hourRulerHtml() {
+  let rows = "";
+  for (let h = 0; h < 24; h++) {
+    const hh = hourHeightFor(h);
+    rows += `<div class="hour-row" style="height:${hh}px${hh < 20 ? ";font-size:8px;line-height:1" : ""}">${String(h).padStart(2, "0")}:00</div>`;
+  }
+  return `<div class="day-col hour-ruler">${dayHeadHtml({ date: "2026-01-01" }, 0)}
+    <div class="hotel-strip" style="visibility:hidden"></div>
+    <div class="timeline-body">${rows}</div></div>`;
+}
+
+// Right-click a day column to add anything to that day (JP, 2026-08-20:
+// "I should just right click on the column of the day and see everything I can add").
+function openMenu(evt, items) {
+  evt.preventDefault();
+  const menu = document.getElementById("ctxMenu");
+  menu.innerHTML = "";
+  items.forEach(([label, fn]) => {
+    if (label === "sep") { const d = document.createElement("div"); d.className = "sep"; menu.appendChild(d); return; }
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.addEventListener("click", () => { menu.style.display = "none"; fn(); });
+    menu.appendChild(b);
+  });
+  menu.style.display = "block";
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.min(evt.clientX, window.innerWidth - r.width - 8) + "px";
+  menu.style.top = Math.min(evt.clientY, window.innerHeight - r.height - 8) + "px";
+}
+
+// Right-click INSIDE the hour grid: everything that happens at a TIME, prefilled with
+// the time you actually clicked (JP, 2026-08-20).
+function showCalendarMenu(evt, dayId, bodyEl) {
+  const px = evt.clientY - bodyEl.getBoundingClientRect().top;
+  const at = pxToTime(Math.max(0, px));
+  openMenu(evt, [
+    [`Add activity at ${at}`, () => openSlotDialog(dayId, "activity", null, null, at)],
+    ["sep"],
+    [`Add flight at ${at}`, () => openSlotDialog(dayId, "transport", null, "flight", at)],
+    [`Add train at ${at}`,  () => openSlotDialog(dayId, "transport", null, "train", at)],
+    [`Add taxi / car at ${at}`, () => openSlotDialog(dayId, "transport", null, "taxi", at)],
+    [`Add ferry at ${at}`,  () => openSlotDialog(dayId, "transport", null, "ferry", at)],
+    [`Add bus at ${at}`,    () => openSlotDialog(dayId, "transport", null, "bus", at)],
+    ["sep"],
+    ["Add / edit hotel", () => openSlotDialog(dayId, "hotel")],
+  ]);
+}
+
+// Right-click the DAY HEADER: everything that happens TO the day itself.
+function showDayHeaderMenu(evt, dayId) {
+  openMenu(evt, [
+    ["Add a day BEFORE this one", () => insertDay(dayId, "before")],
+    ["Add a day AFTER this one",  () => insertDay(dayId, "after")],
+    ["sep"],
+    ["Set location", () => openSlotDialog(dayId, "location")],
+    ["Change date",  () => openSlotDialog(dayId, "date")],
+    ["sep"],
+    ["Delete this day", () => deleteDay(dayId)],
+  ]);
+}
+
+// Inserting a day pushes every later day one day later -- dates AND any hotel stay
+// dates, otherwise a stay would silently detach from the days it covers.
+function insertDay(dayId, position) {
+  const it = activeItin();
+  const idx = it.days.findIndex(d => d.id === dayId);
+  if (idx < 0) return;
+  const at = position === "before" ? idx : idx + 1;
+  const newDate = position === "before" ? it.days[idx].date : addDays(it.days[idx].date, 1);
+  it.days.splice(at, 0, {
+    id: uid(), date: newDate, location: it.days[idx].location,
+    hotel: null, flight: null, transports: [], activities: [],
+  });
+  for (let i = at + 1; i < it.days.length; i++) {
+    const d = it.days[i];
+    d.date = addDays(d.date, 1);
+    if (d.hotel) {
+      if (d.hotel.checkIn) d.hotel.checkIn = addDays(d.hotel.checkIn, 1);
+      if (d.hotel.checkOut) d.hotel.checkOut = addDays(d.hotel.checkOut, 1);
+    }
+  }
+  save(); renderCalendar();
+}
+
+function deleteDay(dayId) {
+  const it = activeItin();
+  const idx = it.days.findIndex(d => d.id === dayId);
+  if (idx < 0 || it.days.length <= 1) return;
+  const d = it.days[idx];
+  const busy = d.hotel || dayTransports(d).length || (d.activities || []).length;
+  if (busy && !confirm("This day has a hotel, transport or activities on it. Delete it anyway?")) return;
+  it.days.splice(idx, 1);
+  for (let i = idx; i < it.days.length; i++) {
+    const x = it.days[i];
+    x.date = addDays(x.date, -1);
+    if (x.hotel) {
+      if (x.hotel.checkIn) x.hotel.checkIn = addDays(x.hotel.checkIn, -1);
+      if (x.hotel.checkOut) x.hotel.checkOut = addDays(x.hotel.checkOut, -1);
+    }
+  }
+  save(); renderCalendar();
+}
+
+document.addEventListener("click", () => { document.getElementById("ctxMenu").style.display = "none"; });
+document.addEventListener("scroll", () => { document.getElementById("ctxMenu").style.display = "none"; }, true);
+
+// Great-circle distance -- the honest way to total a round-the-world trip; summing
+// straight-line lat/lon deltas would understate a long leg badly.
+function haversineKm(a, b) {
+  const R = 6371, toRad = x => x * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s1 = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s1));
+}
+
+async function renderTripStats() {
+  const el = document.getElementById("tripStats");
+  const it = activeItin();
+  const stops = orderedStops(it);            // consecutive-duplicate-free city order
+  const countries = new Set();
+  const coords = [];
+  for (const name of stops) {
+    const g = await geocode(name);
+    if (!g) continue;
+    if (g.countryCode) countries.add(g.countryCode);
+    coords.push(g);
+  }
+  let km = 0;
+  for (let i = 0; i < coords.length - 1; i++) km += haversineKm(coords[i], coords[i + 1]);
+  const legs = it.days.reduce((n, d) => n + dayTransports(d).length, 0);
+  const nights = it.days.filter(d => d.hotel).length;
+  const acts = it.days.reduce((n, d) => n + (d.activities || []).length, 0);
+  const stat = (v, label) => `<div class="stat"><b>${v}</b><span>${label}</span></div>`;
+  el.innerHTML =
+    stat(it.days.length, "days") +
+    stat(countries.size, countries.size === 1 ? "country" : "countries") +
+    stat(new Set(stops.map(x => x.toLowerCase())).size, "cities") +
+    stat(Math.round(km * 0.621371).toLocaleString(), "miles") +
+    stat(legs, legs === 1 ? "leg" : "legs") +
+    stat(nights, "hotel nights") +
+    stat(acts, "activities");
+}
+
+async function renderCalendar() {
+  renderItinSelect();
+  document.getElementById("homeCurrency").value = state.homeCurrency;
+  document.getElementById("paxInput").value = activeItin().pax;
+  const it = activeItin();
+  const grid = document.getElementById("calGrid");
+  grid.innerHTML = "";
+  grid.className = state.calendarView === "timeline" ? "timeline" : "";
+
+  if (state.calendarView === "timeline") grid.insertAdjacentHTML("beforeend", hourRulerHtml());
+
+  it.days.forEach((day, idx) => {
+    const col = document.createElement("div");
+    col.className = "day-col";
+    col.innerHTML = dayHeadHtml(day, idx) + (state.calendarView === "timeline" ? dayBodyTimelineHtml(day, it.days[idx - 1]) : dayBodyCompactHtml(day));
+    col.querySelectorAll("[data-act]").forEach(el => {
+      const act = el.dataset.act;
+      if (act === "activity-new") el.addEventListener("click", e => { e.stopPropagation(); openSlotDialog(day.id, "activity", null); });
+      else if (act === "activity-edit") el.addEventListener("click", e => { e.stopPropagation(); openSlotDialog(day.id, "activity", el.dataset.activityId); });
+      else if (act === "transport-edit") el.addEventListener("click", e => { e.stopPropagation(); openSlotDialog(day.id, "transport", el.dataset.transportId); });
+      else el.addEventListener("click", e => { e.stopPropagation(); openSlotDialog(day.id, act); });
+    });
+    col.dataset.dayId = day.id;
+    if (day.id === state.selectedDayId) col.classList.add("selected");
+    col.addEventListener("click", () => selectDay(day.id));
+    const headEl = col.querySelector(".day-head");
+    const bodyEl = col.querySelector(".timeline-body");
+    if (headEl) headEl.addEventListener("contextmenu", e => { e.stopPropagation(); showDayHeaderMenu(e, day.id); });
+    if (bodyEl) bodyEl.addEventListener("contextmenu", e => { e.stopPropagation(); showCalendarMenu(e, day.id, bodyEl); });
+    grid.appendChild(col);
+  });
+  const addCol = document.createElement("div");
+  addCol.className = "add-day"; addCol.textContent = "+";
+  addCol.addEventListener("click", addDay);
+  grid.appendChild(addCol);
+
+  // Each hotel card is offset half a column and overhangs into the NEXT day. Columns are
+  // DOM siblings, so by default column N+1's sticky strip (same z-index, later in order)
+  // paints its own background straight over that overhang -- the card measured full width
+  // but only half of it was ever visible. Descending z-index makes earlier columns paint
+  // above later ones, so the overhang survives. Card-on-card never collides: card N
+  // overhangs into the LEFT half of column N+1, while card N+1 starts at its own midpoint.
+  Array.from(grid.querySelectorAll(".hotel-strip")).forEach((el, i, arr) => {
+    el.style.zIndex = String(500 - i);
+  });
+  grid.querySelectorAll(".hour-ruler .hotel-strip").forEach(el => { el.style.zIndex = "900"; });
+
+  // One source of truth for column height: the summed band table. Without this the
+  // ruler and the day columns would each guess their own height and drift.
+  grid.querySelectorAll(".timeline-body").forEach(el => { el.style.height = DAY_TOTAL_PX + "px"; });
+
+  fillDayFlags(grid);      // fire-and-forget, progressive -- must not block the render
+  fillDayMeta(grid);       // climate normals + sunrise/sunset, also progressive
+  renderTripStats();
+  healHotelPhotos();       // repair records that stored a LISTING url instead of an image
+  await updateGrandTotal();
+}
+
+// Records saved before the listing-URL resolver existed hold a PAGE url in photoUrl,
+// which renders as a broken (hidden) image forever -- a refresh alone can never fix it
+// because the bad value is in storage, not in the view. Resolve those in place, once.
+let healingPhotos = false;
+async function healHotelPhotos() {
+  if (healingPhotos) return;
+  const isImg = (u) => /\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(u) || /muscache|googleusercontent/i.test(u);
+  const broken = [];
+  state.itineraries.forEach(it => (it.days || []).forEach(d => {
+    const u = d.hotel && d.hotel.photoUrl;
+    if (u && /^https?:\/\//i.test(u) && !isImg(u)) broken.push(d.hotel);
+  }));
+  if (!broken.length) return;
+  healingPhotos = true;
+  let changed = false;
+  for (const h of broken) {
+    try {
+      const r = await fetch(state.bridgeUrl + "/preview?url=" + encodeURIComponent(h.photoUrl));
+      const d = await r.json();
+      if (d.image) { h.photoUrl = d.image; changed = true; }
+    } catch (e) { /* bridge down: leave it, try again next render */ }
+  }
+  healingPhotos = false;
+  if (changed) { save(); renderCalendar(); }
+}
+
+// Climate normal + sunrise/sunset for a city on a given calendar date, from Open-Meteo's
+// free keyless archive. The trip is in the FUTURE, so there is no forecast to read --
+// instead average a 7-day window around the same calendar date in a recent past year,
+// which is what "avg high/low for that day of year" actually means. Sunrise/sunset for a
+// given calendar date shifts by only a minute or two year to year, so the past year's
+// value is a sound stand-in rather than a guess.
+async function dayClimate(lat, lng, isoDate) {
+  const md = isoDate.slice(5);                       // MM-DD
+  const key = `mpvClim_${lat.toFixed(1)}_${lng.toFixed(1)}_${md}`;
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
+  if (cached) return cached;
+  const yr = 2024;
+  const centre = new Date(`${yr}-${md}T00:00:00`);
+  if (isNaN(centre)) return null;
+  const start = new Date(centre.getTime() - 3 * 86400000).toISOString().slice(0, 10);
+  const end = new Date(centre.getTime() + 3 * 86400000).toISOString().slice(0, 10);
+  try {
+    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}`
+      + `&start_date=${start}&end_date=${end}`
+      + `&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const dl = d && d.daily;
+    if (!dl || !dl.temperature_2m_max) return null;
+    const avg = (arr) => {
+      const v = arr.filter(x => typeof x === "number");
+      return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
+    };
+    const mid = Math.floor((dl.sunrise || []).length / 2);
+    const out = {
+      hi: avg(dl.temperature_2m_max),
+      lo: avg(dl.temperature_2m_min),
+      sunrise: dl.sunrise && dl.sunrise[mid] ? dl.sunrise[mid].slice(11, 16) : null,
+      sunset: dl.sunset && dl.sunset[mid] ? dl.sunset[mid].slice(11, 16) : null,
+    };
+    localStorage.setItem(key, JSON.stringify(out));
+    return out;
+  } catch (e) { return null; }
+}
+
+// Two hairlines across the day's own column, at that city's real sunrise/sunset.
+function drawSunLines(metaEl, c) {
+  const col = metaEl.closest(".day-col");
+  const body = col && col.querySelector(".timeline-body");
+  if (!body) return;
+  body.querySelectorAll(".sun-line").forEach(x => x.remove());
+  const add = (time, cls, icon) => {
+    if (!time) return;
+    const el = document.createElement("div");
+    el.className = "sun-line " + cls;
+    el.style.top = hourTopPx(time) + "px";
+    el.title = (cls === "sunrise" ? "Sunrise " : "Sunset ") + time;
+    el.innerHTML = `<span>${icon} ${time}</span>`;
+    body.appendChild(el);
+  };
+  add(c.sunrise, "sunrise", "\u2600");
+  add(c.sunset, "sunset", "\u263e");
+}
+
+async function fillDayMeta(grid) {
+  const slots = Array.from(grid.querySelectorAll("[data-meta-for]"));
+  const seen = new Map();
+  for (const el of slots) {
+    const [name, date] = el.dataset.metaFor.split("|");
+    if (!name || !date) continue;
+    const cacheKey = name + "|" + date;
+    if (seen.has(cacheKey)) { el.innerHTML = seen.get(cacheKey); continue; }
+    const g = await geocode(name);
+    if (!g) continue;
+    const c = await dayClimate(g.lat, g.lng, date);
+    if (!c) continue;
+    // Temperature stays in the header; sunrise/sunset are drawn ON the grid at their
+    // real times instead, where they actually mean something (JP, 2026-08-20).
+    const html = (c.hi != null && c.lo != null) ? `${c.hi}\u00b0 / ${c.lo}\u00b0C` : "";
+    seen.set(cacheKey, html);
+    el.innerHTML = html;
+    drawSunLines(el, c);
+  }
+}
+
+// Sequential, not Promise.all: a 60-day trip can repeat the same few cities many times
+// over, but even the unique-city count could be a couple dozen -- geocode() is cached
+// after the first hit, and going one-at-a-time is kinder to Nominatim's free service
+// than firing a burst of parallel requests.
+async function fillDayFlags(grid) {
+  const spans = Array.from(grid.querySelectorAll("[data-flag-for]"));
+  const uniqueNames = [...new Set(spans.map(s => s.dataset.flagFor).filter(Boolean))];
+  for (const name of uniqueNames) {
+    const g = await geocode(name);
+    const flag = g && g.countryCode ? flagEmoji(g.countryCode) : "";
+    spans.forEach(s => { if (s.dataset.flagFor === name) s.textContent = flag; });
+  }
+}
+
+async function itinTotal(it) {
+  let total = 0, missing = 0, business = 0;
+  const pax = Math.max(1, Number(it.pax) || 1);
+  // A line's business share is its own percentage of that line; the rest is personal.
+  const add = (amount, rec) => {
+    total += amount;
+    if (rec && rec.business) business += amount * ((rec.businessPct != null ? rec.businessPct : 100) / 100);
+  };
+  for (const day of it.days) {
+    // Tickets and per-person activity costs multiply by party size (JP, 2026-08-20).
+    // Hotel is per ROOM per night and is never multiplied.
+    for (const t of dayTransports(day)) {
+      if (t.price == null) continue;
+      const c = await toHome(t.price, t.currency);
+      if (c == null) missing++; else add(c * pax, t);
+    }
+    for (const a of (day.activities || [])) {
+      if (a.price == null) continue;
+      const c = await toHome(a.price, a.currency);
+      if (c == null) missing++; else add(c * pax, a);
+    }
+    if (day.hotel) {
+      const c = await toHome(day.hotel.price, day.hotel.currency);
+      if (c == null) missing++; else add(c, day.hotel);
+    }
+  }
+  return { total, missing, business, personal: total - business };
+}
+async function updateGrandTotal() {
+  const { total, missing, business, personal } = await itinTotal(activeItin());
+  const el = document.getElementById("grandTotal");
+  const fmt = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency });
+  el.textContent = (missing ? "\u26a0 " : "") + fmt(total);
+  const pct = total > 0 ? Math.round((business / total) * 100) : 0;
+  el.title = business > 0
+    ? `Business: ${fmt(business)} (${pct}%)\nPersonal: ${fmt(personal)} (${100 - pct}%)`
+    : "No business expenses flagged yet.\nTick \u201cBusiness expense\u201d on a hotel, transport or activity to split this.";
+  el.style.cursor = "help";
+  // Hover-only (JP, 2026-08-20): visibility (not display) so the row keeps its height
+  // and the header doesn't jump as the pointer moves in and out.
+  const sub = document.getElementById("totalSplit");
+  if (sub) {
+    sub.textContent = business > 0 ? `${fmt(business)} business \u00b7 ${fmt(personal)} personal` : "";
+    const show = () => { sub.style.visibility = business > 0 ? "visible" : "hidden"; };
+    const hide = () => { sub.style.visibility = "hidden"; };
+    el.onmouseenter = show; el.onmouseleave = hide;
+    sub.onmouseenter = show; sub.onmouseleave = hide;
+    hide();
+  }
+}
+
+// ---------- Live search (SerpApi via the Mac bridge) ----------
+// Never calls SerpApi directly from the browser -- see .mac-bridge/server.js for why
+// (SerpApi refuses CORS specifically to stop a client-side key from being exposed).
+function bridgeHeaders() {
+  // /flights, /hotels and /preview are token-free for local requests. Sending an empty
+  // "Bearer " would be a malformed credential, so send nothing unless a token exists.
+  return state.bridgeToken ? { "Authorization": "Bearer " + state.bridgeToken } : {};
+}
+
+async function searchFlights() {
+  const from = document.getElementById("fsFrom").value.trim().toUpperCase();
+  const to = document.getElementById("fsTo").value.trim().toUpperCase();
+  const date = document.getElementById("fsDate").value;
+  const returnDate = document.getElementById("fsReturnDate").value;
+  const out = document.getElementById("fsResults");
+  if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to) || !date) {
+    out.innerHTML = '<div class="empty">Need 3-letter airport codes for both From and To, plus a date.</div>';
+    return;
+  }
+  out.innerHTML = '<div class="empty">Searching…</div>';
+  try {
+    const qs = new URLSearchParams({ from, to, date, ...(returnDate ? { returnDate } : {}) });
+    const r = await fetch(state.bridgeUrl + "/flights?" + qs, { headers: bridgeHeaders() });
+    const data = await r.json();
+    if (data.error) { out.innerHTML = `<div class="empty">${data.error}</div>`; return; }
+    if (!data.flights || !data.flights.length) { out.innerHTML = '<div class="empty">No results.</div>'; return; }
+    out.innerHTML = "";
+    data.flights.slice(0, 8).forEach(f => {
+      const row = document.createElement("div");
+      row.className = "row card";
+      row.style.padding = "8px 10px";
+      row.innerHTML = `<div style="flex:1"><b>${money(f.price, data.currency)}</b> — ${f.airline} — ${f.stops === 0 ? "nonstop" : f.stops + " stop(s)"} — ${Math.round(f.duration/60)}h${f.duration%60}m</div>
+        <button class="btn primary" type="button">+ Add as option</button>`;
+      row.querySelector("button").addEventListener("click", () => {
+        const key = routeKey(from, to);
+        state.routeOptions[key] = state.routeOptions[key] || [];
+        state.routeOptions[key].push({ id: uid(), airline: f.airline, price: f.price, currency: data.currency, date });
+        save(); renderOptions();
+        row.style.opacity = "0.5";
+      });
+      out.appendChild(row);
+    });
+  } catch (e) {
+    out.innerHTML = `<div class="empty">Couldn't reach the bridge (${e.message}).</div>`;
+  }
+}
+document.getElementById("fsSearchBtn").addEventListener("click", searchFlights);
+
+// A pasted Airbnb/Booking/hotel-site URL is a PAGE, not an image. Resolve it to the
+// listing's own picture via the bridge's /preview (OpenGraph) -- the browser can't fetch
+// a third-party page itself (CORS), and these sites only return real markup to a
+// browser-like User-Agent, so it has to happen server-side.
+// The calendar strip crops the photo hard (52px tall, object-fit:cover), so the
+// interesting part is often out of frame. Dragging sets object-position vertically --
+// the same crop the strip will use, previewed at the same aspect.
+function enablePhotoDrag(img) {
+  if (!img || img.dataset.dragWired) return;
+  img.dataset.dragWired = "1";
+  let startY = 0, startPos = 50, dragging = false;
+  const setPos = (p) => {
+    const clamped = Math.max(0, Math.min(100, p));
+    img.dataset.pos = clamped;
+    img.style.objectPosition = `50% ${clamped}%`;
+  };
+  img.addEventListener("pointerdown", e => {
+    dragging = true; startY = e.clientY; startPos = parseFloat(img.dataset.pos) || 50;
+    img.style.cursor = "grabbing"; e.preventDefault();
+    try { img.setPointerCapture(e.pointerId); } catch (_) { /* no active pointer (synthetic event) */ }
+  });
+  img.addEventListener("pointermove", e => {
+    if (!dragging) return;
+    // Guard the divisor: before layout settles clientHeight can be 0, which sends the
+    // position straight to a clamp on the first pixel of movement.
+    const h = img.clientHeight || 90;
+    setPos(startPos - ((e.clientY - startY) / h) * 70); // 70 not 100: gentler than 1:1
+  });
+  const end = e => { dragging = false; img.style.cursor = "grab"; try { img.releasePointerCapture(e.pointerId); } catch (_) {} };
+  img.addEventListener("pointerup", end);
+  img.addEventListener("pointercancel", end);
+}
+
+async function resolvePhotoFromLink() {
+  const input = document.getElementById("f_photo");
+  const statusEl = document.getElementById("f_photoStatus");
+  const url = input.value.trim();
+  if (!url || !/^https?:\/\//i.test(url)) return;
+  if (/\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(url)) { statusEl.textContent = "Already a direct image URL."; return; }
+  statusEl.textContent = "Fetching listing photo…";
+  try {
+    const r = await fetch(state.bridgeUrl + "/preview?url=" + encodeURIComponent(url));
+    const d = await r.json();
+    if (d.error || !d.image) { statusEl.textContent = d.error || "No photo found on that page."; return; }
+    input.value = d.image;
+    const prev = document.getElementById("f_photoPreview");
+    prev.src = d.image; prev.style.display = "block";
+    const nameEl = document.getElementById("f_name");
+    if (d.title && !nameEl.value.trim()) nameEl.value = d.title;
+    statusEl.textContent = "Photo pulled" + (d.title ? ` from: ${d.title.slice(0, 60)}` : "") + ".";
+  } catch (e) {
+    statusEl.textContent = "Couldn't reach the bridge (" + e.message + ").";
+  }
+}
+
+async function searchHotel(day) {
+  const q = document.getElementById("f_search").value.trim();
+  const out = document.getElementById("f_searchResults");
+  if (!q) return;
+  const checkIn = document.getElementById("f_checkin")?.value || day.date;
+  const checkOut = document.getElementById("f_checkout")?.value || addDays(checkIn, 1);
+  out.innerHTML = '<div class="empty">Searching…</div>';
+  try {
+    const qs = new URLSearchParams({ q, checkIn, checkOut });
+    const r = await fetch(state.bridgeUrl + "/hotels?" + qs, { headers: bridgeHeaders() });
+    const data = await r.json();
+    if (data.error) { out.innerHTML = `<div class="empty">${data.error}</div>`; return; }
+    if (!data.properties || !data.properties.length) { out.innerHTML = '<div class="empty">No results.</div>'; return; }
+    out.innerHTML = "";
+    data.properties.forEach(p => {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.style.cssText = "gap:8px;padding:6px;border:1px solid var(--border);border-radius:6px;margin-top:6px;cursor:pointer";
+      row.innerHTML = `${p.photo ? `<img src="${p.photo}" style="width:52px;height:40px;object-fit:cover;border-radius:4px" />` : ""}
+        <div style="flex:1"><b>${p.name}</b><br/><span class="muted">${money(p.price, data.currency)}/night${p.rating ? " · ★" + p.rating : ""}</span></div>`;
+      row.addEventListener("click", () => {
+        document.getElementById("f_name").value = p.name;
+        if (p.price != null) document.getElementById("f_price").value = p.price;
+        if (p.photo) { document.getElementById("f_photo").value = p.photo; document.getElementById("f_photoPreview").src = p.photo; document.getElementById("f_photoPreview").style.display = "block"; }
+      });
+      out.appendChild(row);
+    });
+  } catch (e) {
+    out.innerHTML = `<div class="empty">Couldn't reach the bridge (${e.message}).</div>`;
+  }
+}
+
+// ---------- Flight Options ----------
+document.getElementById("addOptBtn").addEventListener("click", () => {
+  const from = document.getElementById("optFrom").value.trim();
+  const to = document.getElementById("optTo").value.trim();
+  const price = parseFloat(document.getElementById("optPrice").value);
+  if (!from || !to || !price) return alert("From, To and Price are required.");
+  const key = routeKey(from, to);
+  state.routeOptions[key] = state.routeOptions[key] || [];
+  state.routeOptions[key].push({
+    id: uid(), airline: document.getElementById("optAirline").value.trim(),
+    price, currency: document.getElementById("optCurrency").value,
+    date: document.getElementById("optDate").value.trim(),
+  });
+  save();
+  document.getElementById("optFrom").value = ""; document.getElementById("optTo").value = "";
+  document.getElementById("optAirline").value = ""; document.getElementById("optPrice").value = ""; document.getElementById("optDate").value = "";
+  renderOptions();
+});
+
+function renderOptions() {
+  const wrap = document.getElementById("optionsTableWrap");
+  const keys = Object.keys(state.routeOptions).filter(k => state.routeOptions[k].length);
+  if (!keys.length) { wrap.innerHTML = '<div class="empty">No flight options yet — add one above.</div>'; return; }
+  let html = "<table><thead><tr><th>Route</th><th>Airline / notes</th><th>Price</th><th>Date</th><th></th></tr></thead><tbody>";
+  keys.forEach(key => {
+    const [from, to] = key.split("||");
+    state.routeOptions[key].forEach(o => {
+      html += `<tr><td>${from} → ${to}</td><td>${o.airline || "—"}</td><td>${money(o.price, o.currency)}</td><td>${o.date || "—"}</td>
+        <td><button class="icon" data-del="${key}|${o.id}">✕</button></td></tr>`;
+    });
+  });
+  html += "</tbody></table>";
+  wrap.innerHTML = html;
+  wrap.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => {
+    const [key, id] = b.dataset.del.split("|");
+    state.routeOptions[key] = state.routeOptions[key].filter(o => o.id !== id);
+    save(); renderOptions();
+  }));
+}
+
+// ---------- Compare ----------
+document.getElementById("dupItinBtn").addEventListener("click", () => {
+  const src = activeItin();
+  const name = prompt("Name this alternate ordering", src.name + " (reorder)");
+  if (!name) return;
+  const copy = { id: uid(), name, days: JSON.parse(JSON.stringify(src.days)), pax: src.pax || 1 };
+  state.itineraries.push(copy);
+  save(); renderItinSelect();
+  alert("Duplicated. Go to Calendar, switch to it, and reorder by editing each day's location — or re-add days in the new order you want to test.");
+});
+
+async function renderCompare() {
+  const wrap = document.getElementById("compareList");
+  wrap.innerHTML = "";
+  const results = [];
+  for (const it of state.itineraries) {
+    const { total, missing } = await itinTotal(it);
+    results.push({ it, total, missing, legs: it.days.length });
+  }
+  const complete = results.filter(r => !r.missing && r.total > 0);
+  const cheapestId = complete.length ? complete.reduce((a, b) => a.total < b.total ? a : b).it.id : null;
+  results.forEach(r => {
+    const card = document.createElement("div");
+    card.className = "card itin-card" + (r.it.id === cheapestId ? " cheapest" : "");
+    card.innerHTML = `
+      <div style="flex:1">
+        <div class="row"><b>${r.it.name}</b>${r.it.id === cheapestId ? '<span class="itin-chip">cheapest complete plan</span>' : ""}</div>
+        <div class="muted">${r.it.days.length} days · ${r.it.days.filter(d=>d.flight).length} flights logged · ${r.it.days.filter(d=>d.hotel).length} hotel nights logged</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:18px;font-weight:700">${r.total.toLocaleString(undefined,{style:"currency",currency:state.homeCurrency})}</div>
+        ${r.missing ? `<div class="muted" style="color:var(--warn)">⚠ ${r.missing} price(s) missing an FX rate or unpriced</div>` : ""}
+      </div>`;
+    wrap.appendChild(card);
+  });
+  if (!results.length) wrap.innerHTML = '<div class="empty">No itineraries yet.</div>';
+}
+
+// ---------- Settings ----------
+document.getElementById("settingsBtn").addEventListener("click", () => {
+  document.getElementById("bridgeUrl").value = state.bridgeUrl;
+  document.getElementById("bridgeToken").value = state.bridgeToken;
+  document.getElementById("settingsDialog").showModal();
+});
+document.getElementById("settingsCancel").addEventListener("click", () => document.getElementById("settingsDialog").close());
+document.getElementById("settingsSave").addEventListener("click", () => {
+  state.bridgeUrl = document.getElementById("bridgeUrl").value.trim() || "http://localhost:3100";
+  state.bridgeToken = document.getElementById("bridgeToken").value;
+  save(); document.getElementById("settingsDialog").close(); checkBridge();
+});
+
+// ---------- Chat ----------
+function addMsg(role, text) {
+  const el = document.createElement("div");
+  el.className = "msg " + role;
+  el.textContent = text;
+  document.getElementById("chatMsgs").appendChild(el);
+  document.getElementById("chatMsgs").scrollTop = 1e9;
+  return el;
+}
+function renderChatLog() {
+  document.getElementById("chatMsgs").innerHTML = "";
+  state.chatLog.forEach(m => addMsg(m.role, m.content));
+}
+
+async function checkBridge() {
+  const dot = document.getElementById("bridgeDot");
+  try {
+    const r = await fetch(state.bridgeUrl + "/health", { signal: AbortSignal.timeout(2500) });
+    dot.style.background = r.ok ? "#2f6f5e" : "#b0392b";
+  } catch (e) { dot.style.background = "#b0392b"; }
+}
+
+async function sendChat() {
+  const input = document.getElementById("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  state.chatLog.push({ role: "user", content: text }); save();
+  addMsg("user", text);
+  const assistantEl = addMsg("assistant", "…");
+
+  if (!state.bridgeToken) {
+    assistantEl.textContent = "No bridge token set. Click ⚙ above and paste the token from .mac-bridge/.env (MAC_BRIDGE_TOKEN).";
+    return;
+  }
+
+  const tripContext = "Current trip data (JSON, for context — do not just dump it back):\n" + JSON.stringify({
+    homeCurrency: state.homeCurrency,
+    itineraries: state.itineraries,
+    routeOptions: state.routeOptions,
+  });
+  const history = state.chatLog.slice(0, -1).slice(-10).map(m => ({ role: m.role, content: m.content }));
+
+  try {
+    const resp = await fetch(state.bridgeUrl + "/run-agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + state.bridgeToken },
+      body: JSON.stringify({
+        prompt: `You are a helpful travel-planning assistant embedded in JP's personal World Tour Planner tool. ${tripContext}\n\nUser: ${text}`,
+        history,
+      }),
+    });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "", full = "";
+    assistantEl.textContent = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop();
+      for (const part of parts) {
+        const line = part.split("\n").find(l => l.startsWith("data: "));
+        if (!line) continue;
+        const payload = JSON.parse(line.slice(6));
+        if (payload.text) { full += payload.text; assistantEl.textContent = full; document.getElementById("chatMsgs").scrollTop = 1e9; }
+      }
+    }
+    state.chatLog.push({ role: "assistant", content: full || "(no response)" }); save();
+  } catch (e) {
+    assistantEl.textContent = "Couldn't reach the bridge (" + e.message + "). Check it's running: cd .mac-bridge && node server.js";
+  }
+}
+document.getElementById("chatSend").addEventListener("click", sendChat);
+document.getElementById("chatInput").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+// ---------- Globe ----------
+// Free, no-key geocoding via OpenStreetMap Nominatim. Cached in localStorage keyed by
+// lowercased name so repeat views don't re-hit it (Nominatim's usage policy asks for
+// at most ~1 request/sec and no hammering -- caching also just makes this instant on
+// every render after the first).
+let globeInstance = null;
+
+async function geocode(name) {
+  const key = "mpvGeo_" + name.trim().toLowerCase();
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
+  // Re-fetch if the cache predates countryCode (added for the flag feature) rather than
+  // silently showing no flag forever for anything geocoded before this change.
+  if (cached && cached.countryCode !== undefined) return cached;
+  try {
+    const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&q=" + encodeURIComponent(name);
+    const r = await fetch(url, { headers: { "Accept-Language": "en" } });
+    const d = await r.json();
+    if (!d || !d[0]) return null;
+    const point = {
+      lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon), display: d[0].display_name,
+      countryCode: (d[0].address && d[0].address.country_code) ? d[0].address.country_code.toUpperCase() : null,
+    };
+    localStorage.setItem(key, JSON.stringify(point));
+    return point;
+  } catch (e) { return null; }
+}
+
+// ISO alpha-2 -> flag emoji: two Unicode regional-indicator symbols, no image/API needed.
+function flagEmoji(countryCode) {
+  if (!countryCode || countryCode.length !== 2) return "";
+  const codePoints = [...countryCode.toUpperCase()].map(c => 0x1F1E6 + (c.charCodeAt(0) - 65));
+  return String.fromCodePoint(...codePoints);
+}
+
+function orderedStops(it) {
+  // Dedupe CONSECUTIVE repeats (multiple days in the same city = one stop), keep order.
+  // A day can carry TWO locations (half-day in each); both count as stops, in order.
+  const stops = [];
+  for (const day of it.days) {
+    for (const name of [(day.location || "").trim(), (day.location2 || "").trim()]) {
+      if (!name) continue;
+      if (stops.length && stops[stops.length - 1] === name) continue;
+      stops.push(name);
+    }
+  }
+  return stops;
+}
+
+async function renderGlobe() {
+  const status = document.getElementById("globeStatus");
+  const it = activeItin();
+  const stops = orderedStops(it);
+  if (!stops.length) {
+    status.textContent = "No day locations set yet -- add destinations on the Calendar tab first.";
+    return;
+  }
+  status.textContent = `Geocoding ${stops.length} stop(s)…`;
+
+  const resolved = [];
+  const failed = [];
+  for (const name of stops) {
+    const g = await geocode(name);
+    if (g) resolved.push({ name, ...g });
+    else failed.push(name);
+  }
+
+  if (!resolved.length) {
+    status.textContent = "Couldn't geocode any of these locations (offline, or names too ambiguous). Try more specific names, e.g. 'Rome, Italy'.";
+    return;
+  }
+
+  status.textContent = `${resolved.length}/${stops.length} stops mapped` + (failed.length ? ` — couldn't find: ${failed.join(", ")}` : "") + ". Drag to spin, scroll to zoom.";
+
+  const pointsData = resolved.map((p, i) => ({ lat: p.lat, lng: p.lng, name: p.name, order: i + 1 }));
+  const arcsData = [];
+  for (let i = 0; i < resolved.length - 1; i++) {
+    arcsData.push({
+      startLat: resolved[i].lat, startLng: resolved[i].lng,
+      endLat: resolved[i + 1].lat, endLng: resolved[i + 1].lng,
+    });
+  }
+
+  const el = document.getElementById("globeViz");
+  if (!globeInstance) {
+    if (typeof Globe === "undefined") {
+      status.textContent = "Globe library failed to load (offline?). It's fetched from unpkg.com — needs internet once, then browser-caches.";
+      return;
+    }
+    globeInstance = Globe()(el)
+      .width(el.clientWidth)
+      .height(el.clientHeight)
+      // earth-blue-marble.jpg is already the highest-res texture three-globe ships
+      // (1.46MB vs ~250-900KB for the alternatives, checked live) -- the blur wasn't the
+      // texture, it was the WebGL canvas rendering at 1x on a Retina display and getting
+      // upscaled. Fixed below via setPixelRatio.
+      .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
+      .backgroundColor("rgba(0,0,0,0)")
+      .atmosphereColor("#7fb0ff")
+      .atmosphereAltitude(0.18);
+    globeInstance.renderer().setPixelRatio(window.devicePixelRatio || 1);
+    // Without an explicit width/height, Globe.gl sizes off the window rather than this
+    // container, so the sphere overflowed the card and got clipped by its overflow:hidden.
+    window.addEventListener("resize", () => {
+      if (globeInstance) globeInstance.width(el.clientWidth).height(el.clientHeight);
+    });
+    document.addEventListener("fullscreenchange", () => {
+      if (globeInstance) globeInstance.width(el.clientWidth).height(el.clientHeight);
+    });
+    // Slow constant spin until the user first drags, matching the reference feel.
+    const controls = globeInstance.controls();
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.4;
+    el.addEventListener("pointerdown", () => { controls.autoRotate = false; }, { once: true });
+  } else {
+    globeInstance.width(el.clientWidth).height(el.clientHeight);
+  }
+
+  globeInstance
+    .pointsData(pointsData)
+    .pointLat("lat").pointLng("lng")
+    .pointColor(() => "#2f6f5e")
+    .pointAltitude(0.012)
+    .pointRadius(0.45)
+    .pointLabel(p => `${p.order}. ${p.name}`)
+    .labelsData(pointsData)
+    .labelLat("lat").labelLng("lng")
+    .labelText(p => String(p.order))
+    .labelSize(1.1)
+    .labelDotRadius(0)
+    .labelColor(() => "rgba(255,255,255,0.95)")
+    .labelResolution(2)
+    .arcsData(arcsData)
+    .arcColor(() => ["#2f6f5e", "#7fb0ff"])
+    .arcDashLength(0.4)
+    .arcDashGap(0.15)
+    .arcDashAnimateTime(2500)
+    .arcStroke(0.6)
+    .pointOfView({ lat: resolved[0].lat, lng: resolved[0].lng, altitude: 2.2 }, 800);
+}
+document.getElementById("fullscreenBtn").addEventListener("click", () => {
+  const el = document.getElementById("globeViz");
+  if (document.fullscreenElement) document.exitFullscreen();
+  else el.requestFullscreen().catch(err => alert("Fullscreen not available: " + err.message));
+});
+
+document.getElementById("regeocodeBtn").addEventListener("click", () => {
+  orderedStops(activeItin()).forEach(name => localStorage.removeItem("mpvGeo_" + name.trim().toLowerCase()));
+  renderGlobe();
+});
+
+// ---------- init ----------
+renderChatLog();
+renderCalendar();
+checkBridge();
+setInterval(checkBridge, 15000);
+</script>
+</body>
+</html>
