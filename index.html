@@ -63,7 +63,8 @@
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); margin: 0 0 10px; }
   .empty { color: var(--ink-dim); font-size: 12.5px; padding: 10px 0; }
   .muted { color: var(--ink-dim); font-size: 11.5px; }
-  .stat { display: flex; flex-direction: column; padding: 0 12px; border-right: 1px solid var(--border); }
+  .stat { display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 0 12px; border-right: 1px solid var(--border); }
   .stat:last-child { border-right: none; }
   .stat b { font-size: 15px; line-height: 1.1; }
   .stat span { font-size: 9.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .04em; }
@@ -643,6 +644,10 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
         <div style="flex:1"><label class="muted">Depart (local to From)</label><input id="t_depart" type="time" value="${t.departTime || presetTime || ""}" /></div>
         <div style="flex:1"><label class="muted">Arrive (local to To)</label><input id="t_arrive" type="time" value="${t.arriveTime || ""}" /></div>
       </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn" id="t_calc" type="button">Calculate drive time</button>
+        <span class="muted" id="t_calcOut"></span>
+      </div>
       <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px">
         <input id="t_overnight" type="checkbox" ${preOvernight ? "checked" : ""} style="width:auto" />
         Lands the NEXT day \u2014 arrival shows on the following day's column</label>
@@ -655,6 +660,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       ${bookingFieldsHtml("t", t, "Flight / train #")}
       ${bizFieldsHtml("t", t)}`;
     wireBizFields("t");
+    document.getElementById("t_calc").addEventListener("click", calcGroundTime);
   } else if (kind === "activity") {
     const a = (day.activities || []).find(x => x.id === activityId) || {};
     body.innerHTML = `
@@ -1030,9 +1036,11 @@ function arrivesNextDay(t) {
   return t.arriveTime < t.departTime;
 }
 
+const GROUND_MODES = ["drive", "taxi", "bus", "train"];   // train follows the ground too
 const TRANSPORT_META = {
   flight: { icon: "\u2708", label: "Flight" },
   train:  { icon: "\ud83d\ude86", label: "Train" },
+  drive:  { icon: "\ud83d\ude97", label: "Drive" },
   taxi:   { icon: "\ud83d\ude95", label: "Taxi / car" },
   ferry:  { icon: "\u26f4", label: "Ferry" },
   bus:    { icon: "\ud83d\ude8c", label: "Bus" },
@@ -1170,6 +1178,7 @@ function showCalendarMenu(evt, dayId, bodyEl) {
     ["sep"],
     [`Add flight at ${at}`, () => openSlotDialog(dayId, "transport", null, "flight", at)],
     [`Add train at ${at}`,  () => openSlotDialog(dayId, "transport", null, "train", at)],
+    [`Add drive at ${at}`, () => openSlotDialog(dayId, "transport", null, "drive", at)],
     [`Add taxi / car at ${at}`, () => openSlotDialog(dayId, "transport", null, "taxi", at)],
     [`Add ferry at ${at}`,  () => openSlotDialog(dayId, "transport", null, "ferry", at)],
     [`Add bus at ${at}`,    () => openSlotDialog(dayId, "transport", null, "bus", at)],
@@ -1288,7 +1297,10 @@ async function renderTripStats() {
   let km = 0;
   for (let i = 0; i < coords.length - 1; i++) km += haversineKm(coords[i], coords[i + 1]);
   const legs = it.days.reduce((n, d) => n + dayTransports(d).length, 0);
+  const isAirbnb = h => !!h && (/muscache|airbnb/i.test(h.photoUrl || "") || /airbnb|villa|apartment|apt\b/i.test(h.name || ""));
   const nights = it.days.filter(d => d.hotel).length;
+  const bnbNights = it.days.filter(d => isAirbnb(d.hotel)).length;
+  const hotelNights = nights - bnbNights;
   const acts = it.days.reduce((n, d) => n + (d.activities || []).length, 0);
   const stat = (v, label) => `<div class="stat"><b>${v}</b><span>${label}</span></div>`;
   el.innerHTML =
@@ -1297,7 +1309,8 @@ async function renderTripStats() {
     stat(new Set(stops.map(x => x.toLowerCase())).size, "cities") +
     stat(Math.round(km * 0.621371).toLocaleString(), "miles") +
     stat(legs, legs === 1 ? "leg" : "legs") +
-    stat(nights, "hotel nights") +
+    stat(hotelNights, hotelNights === 1 ? "hotel night" : "hotel nights") +
+    stat(bnbNights, bnbNights === 1 ? "rental night" : "rental nights") +
     stat(acts, "activities");
 }
 
@@ -1668,6 +1681,54 @@ async function resolvePhotoFromLink() {
   }
 }
 
+// Mapbox Directions gives the REAL road distance and duration; a straight line between
+// two cities is neither. Fills the arrival time from the departure time so the leg lands
+// on the calendar at the hour you would actually get there.
+const DRIVE_PROFILE = { drive: "driving", taxi: "driving", bus: "driving", train: "driving" };
+async function directionsBetween(a, b, profile) {
+  const key = `mpvDir_${profile}_${a.lat.toFixed(3)},${a.lng.toFixed(3)}_${b.lat.toFixed(3)},${b.lng.toFixed(3)}`;
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
+  if (cached) return cached;
+  if (!state.mapboxToken) return null;
+  const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/`
+    + `${a.lng},${a.lat};${b.lng},${b.lat}?geometries=geojson&overview=full&access_token=${state.mapboxToken}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (!d.routes || !d.routes.length) return null;
+  const out = { km: d.routes[0].distance / 1000, hours: d.routes[0].duration / 3600,
+                coords: d.routes[0].geometry.coordinates };
+  try { localStorage.setItem(key, JSON.stringify(out)); } catch (e) { /* quota: fine, refetch */ }
+  return out;
+}
+
+async function calcGroundTime() {
+  const out = document.getElementById("t_calcOut");
+  const type = document.getElementById("t_type").value;
+  const from = document.getElementById("t_from").value.trim();
+  const to = document.getElementById("t_to").value.trim();
+  if (!from || !to) { out.textContent = "Enter From and To first."; return; }
+  if (!state.mapboxToken) { out.textContent = "Add a Mapbox token in \u2699 first."; return; }
+  out.textContent = "Routing\u2026";
+  const [a, b] = [await geocode(from), await geocode(to)];
+  if (!a || !b) { out.textContent = "Couldn't locate one of those places."; return; }
+  const res = await directionsBetween(a, b, DRIVE_PROFILE[type] || "driving");
+  if (!res) { out.textContent = "No road route found (is one of them across water?)."; return; }
+  const h = Math.floor(res.hours), m = Math.round((res.hours - h) * 60);
+  out.textContent = `${Math.round(res.km)} km \u00b7 about ${h}h ${String(m).padStart(2, "0")}m by road`;
+  const dep = document.getElementById("t_depart").value;
+  if (dep) {
+    const [dh, dm] = dep.split(":").map(Number);
+    const total = dh * 60 + dm + Math.round(res.hours * 60);
+    const arrH = Math.floor((total % 1440) / 60), arrM = total % 60;
+    document.getElementById("t_arrive").value =
+      String(arrH).padStart(2, "0") + ":" + String(arrM).padStart(2, "0");
+    document.getElementById("t_overnight").checked = total >= 1440;
+  } else {
+    out.textContent += " \u2014 set a departure time to fill the arrival.";
+  }
+}
+
 async function searchHotel(day) {
   const q = document.getElementById("f_search").value.trim();
   const out = document.getElementById("f_searchResults");
@@ -1911,15 +1972,25 @@ function flagEmoji(countryCode) {
 }
 
 function orderedStops(it) {
-  // Dedupe CONSECUTIVE repeats (multiple days in the same city = one stop), keep order.
-  // A day can carry TWO locations (half-day in each); both count as stops, in order.
+  // Walk the trip in order and collect every place it actually touches. A CONNECTION city
+  // is a real stop on the map even though no day is "spent" there: a Seoul -> Vancouver ->
+  // Montreal itinerary passes through Vancouver, so the route must bend there rather than
+  // drawing one straight Seoul-Montreal arc (JP, 2026-08-20). Sources, per day, in order:
+  // the day's location, each transport leg's from/to, then the optional second location.
   const stops = [];
+  const push = name => {
+    const n = (name || "").trim();
+    if (!n) return;
+    if (stops.length && stops[stops.length - 1].toLowerCase() === n.toLowerCase()) return;
+    stops.push(n);
+  };
   for (const day of it.days) {
-    for (const name of [(day.location || "").trim(), (day.location2 || "").trim()]) {
-      if (!name) continue;
-      if (stops.length && stops[stops.length - 1] === name) continue;
-      stops.push(name);
-    }
+    // Transports come FIRST: they happen during the day, while day.location is where the
+    // day ends up. Pushing the location first produced a Seoul -> Montreal -> Seoul ->
+    // Vancouver -> Montreal zigzag that both drew wrong and inflated total mileage.
+    for (const t of dayTransports(day)) { push(t.from); push(t.to); }
+    push(day.location);
+    push(day.location2);
   }
   return stops;
 }
@@ -1984,7 +2055,70 @@ async function renderGlobe() {
   }
 }
 
-function drawRoute(resolved) {
+// A flight follows a GREAT CIRCLE, and a straight lng/lat segment is not one: Seoul to
+// Vancouver spans 250 degrees of longitude the naive way, so the line wraps the wrong way
+// round the planet instead of taking the ~110 degree hop across the Pacific -- and even
+// drawn correctly it would cut a flat chord rather than the northern arc a real flight
+// takes past the Aleutians. Interpolate along the sphere, then unwrap the longitudes so
+// consecutive points never jump more than 180 degrees.
+function greatCircle(a, b, n) {
+  const toRad = x => x * Math.PI / 180, toDeg = x => x * 180 / Math.PI;
+  const lat1 = toRad(a.lat), lon1 = toRad(a.lng), lat2 = toRad(b.lat), lon2 = toRad(b.lng);
+  const d = 2 * Math.asin(Math.sqrt(
+    Math.sin((lat2 - lat1) / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2));
+  if (!isFinite(d) || d === 0) return [[a.lng, a.lat]];
+  const steps = n || Math.max(24, Math.round((d * 180 / Math.PI) * 1.5));
+  const out = [];
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+    const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+    const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+    out.push([toDeg(Math.atan2(y, x)), toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)))]);
+  }
+  return out;
+}
+
+// Keep the drawn path continuous across the antimeridian instead of snapping back.
+function unwrapLngs(coords) {
+  const out = [];
+  let prev = null;
+  for (const [lng, lat] of coords) {
+    let L = lng;
+    if (prev !== null) {
+      while (L - prev > 180) L -= 360;
+      while (L - prev < -180) L += 360;
+    }
+    out.push([L, lat]);
+    prev = L;
+  }
+  return out;
+}
+
+function legModeBetween(fromName, toName) {
+  const a = (fromName || "").trim().toLowerCase(), b = (toName || "").trim().toLowerCase();
+  for (const day of activeItin().days) {
+    for (const t of dayTransports(day)) {
+      if ((t.from || "").trim().toLowerCase() === a && (t.to || "").trim().toLowerCase() === b) return t.type || "flight";
+    }
+  }
+  return null;   // no leg recorded: assume air, which is the safe default for a world tour
+}
+
+function routeCoordinates(resolved) {
+  let coords = [];
+  for (let i = 0; i < resolved.length - 1; i++) {
+    const seg = greatCircle(resolved[i], resolved[i + 1]);
+    coords = coords.concat(i === 0 ? seg : seg.slice(1));
+  }
+  if (!coords.length && resolved.length === 1) coords = [[resolved[0].lng, resolved[0].lat]];
+  return unwrapLngs(coords);
+}
+
+async function drawRoute(resolved) {
   globeMarkers.forEach(m => m.remove());
   globeMarkers = [];
   resolved.forEach((p, i) => {
@@ -1998,19 +2132,36 @@ function drawRoute(resolved) {
     globeMarkers.push(marker);
   });
 
-  const geojson = {
-    type: "Feature",
-    geometry: { type: "LineString", coordinates: resolved.map(p => [p.lng, p.lat]) },
-  };
+  // Air legs arc along a great circle; ground legs follow the actual road, because a
+  // drive from Barcelona to Moraira does not cross the Mediterranean (JP, 2026-08-20).
+  const features = [];
+  for (let i = 0; i < resolved.length - 1; i++) {
+    const a = resolved[i], b = resolved[i + 1];
+    const mode = legModeBetween(a.name, b.name);
+    let coords = null, ground = false;
+    if (mode && GROUND_MODES.includes(mode)) {
+      const res = await directionsBetween(a, b, DRIVE_PROFILE[mode] || "driving");
+      if (res && res.coords && res.coords.length) { coords = res.coords; ground = true; }
+    }
+    if (!coords) coords = unwrapLngs(greatCircle(a, b));
+    features.push({ type: "Feature", properties: { ground }, geometry: { type: "LineString", coordinates: coords } });
+  }
+  const geojson = { type: "FeatureCollection", features };
+
   if (globeInstance.getSource("route")) {
     globeInstance.getSource("route").setData(geojson);
   } else {
-    globeInstance.addSource("route", { type: "geojson", data: geojson, lineMetrics: true });
+    globeInstance.addSource("route", { type: "geojson", data: geojson, lineMetrics: false });
     globeInstance.addLayer({
       id: "route", type: "line", source: "route",
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": "#ffffff", "line-width": 2, "line-opacity": 0.9,
-               "line-dasharray": [2, 1.5] },
+      paint: {
+        "line-width": ["case", ["get", "ground"], 3, 2],
+        // solid amber for roads, dashed white for flights -- the mode is readable at a glance
+        "line-color": ["case", ["get", "ground"], "#f0b35c", "#ffffff"],
+        "line-opacity": 0.95,
+        "line-dasharray": ["case", ["get", "ground"], ["literal", [1, 0]], ["literal", [2, 1.5]]],
+      },
     });
   }
 
