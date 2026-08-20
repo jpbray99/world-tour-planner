@@ -1487,7 +1487,7 @@ async function renderTripStats() {
   const countries = new Set();
   const coords = [];
   for (const s of stops) {
-    const g = await geocode(s.name);
+    const g = await geocode(s.name, s.kind);
     if (!g) continue;
     if (g.countryCode) countries.add(g.countryCode);
     coords.push({ ...g, name: s.name });
@@ -2445,7 +2445,8 @@ const IATA_RE = /^[A-Za-z]{3}$/;
 const AIRPORT_WORD_RE = /\bairports?\b/i;
 // Bumped from mpvGeo_ so every coordinate cached by the broken lookup is ignored on sight
 // rather than quietly outliving the fix.
-const geoCacheKey = name => GEO_CACHE_PREFIX + name.trim().toLowerCase();
+const geoCacheKey = (name, kind) =>
+  GEO_CACHE_PREFIX + (kind === "stay" ? "p:" : "v:") + name.trim().toLowerCase();
 
 // Bumping the prefix retires the old entries logically, but they still occupy the quota.
 // Sweep them out once on load, or every bump permanently shrinks the room left for the trip.
@@ -2532,15 +2533,31 @@ async function geocodeAirport(code, name) {
 // nothing (JP, 2026-08-20). It also reports Hong Kong as HK, Macau as MO and Taipei as
 // TW directly, with none of the country_code="cn" untangling Nominatim needs.
 // What it is NOT is an airport database: "YUL" comes back as Yulin, China.
+// Open-Meteo's first result is a FUZZY match, and a fuzzy match can outrank an exact one:
+// "Kos" returns Sihanoukville, Cambodia ahead of Kos, Greece, and "Goa" returns Genoa ahead
+// of Goa. Asking for one result hid that completely. Ask for ten and prefer a result whose
+// name IS the name asked for.
+//
+// Beyond exactness, keep Open-Meteo's own ranking: it already resolves the major city, and
+// sorting by population would actively break it -- Valencia, Venezuela is twice the size of
+// Valencia, Spain, and both are exact (JP, 2026-08-20).
+function pickPlace(results, name) {
+  const norm = x => (x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const want = norm(name);
+  const usable = results.filter(g => typeof g.latitude === "number");
+  const exact = usable.filter(g => norm(g.name) === want);
+  return exact.find(g => (g.feature_code || "").startsWith("PPL")) || exact[0] || usable[0] || null;
+}
+
 async function openMeteoGeocode(name) {
   try {
-    const url = "https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json"
+    const url = "https://geocoding-api.open-meteo.com/v1/search?count=10&language=en&format=json"
       + "&name=" + encodeURIComponent(name);
     const r = await fetch(url);
     if (!r.ok) return null;
     const d = await r.json();
-    const g = d && d.results && d.results[0];
-    if (!g || typeof g.latitude !== "number") return null;
+    const g = pickPlace((d && d.results) || [], name);
+    if (!g) return null;
     return {
       lat: g.latitude, lng: g.longitude,
       display: [g.name, g.admin1, g.country].filter(Boolean).join(", "),
@@ -2549,39 +2566,51 @@ async function openMeteoGeocode(name) {
   } catch (e) { return null; }
 }
 
-async function geocode(name) {
+// Nominatim's top free-text hit for a string it does not really know is a random node
+// anywhere on earth. Ask for several and insist on a settlement; if none of them is one,
+// hand back what we took but MARK it, so a guess never passes for a fact.
+async function nominatimPlace(raw) {
+  const d = await nominatim(raw, 5);
+  if (!Array.isArray(d) || !d.length) return null;
+  const place = d.find(r => r.class === "place");
+  const point = nominatimPoint(place || d[0]);
+  if (!place) point.weak = true;
+  return point;
+}
+
+async function geocode(name, kind) {
   const raw = (name || "").trim();
   if (!raw) return null;
-  const key = geoCacheKey(raw);
-  // The offline IATA table is exact, instant and never rate-limited, so it wins over
-  // anything the cache remembers. Checking the cache first is what let one bad airport
-  // coordinate survive every later fix.
-  if (IATA_RE.test(raw)) {
-    const a = airportByCode(raw.toUpperCase());
-    if (a) {
-      const point = { lat: a.lat, lng: a.lng, display: raw.toUpperCase() + " airport", countryCode: a.cc };
-      try { localStorage.setItem(key, JSON.stringify(point)); } catch (e) {}
-      return point;
-    }
+  const key = geoCacheKey(raw, kind);
+  const code = IATA_RE.test(raw) ? raw.toUpperCase() : null;
+  const air = code ? airportByCode(code) : null;
+  const fromTable = () => ({ lat: air.lat, lng: air.lng, display: code + " airport", countryCode: air.cc });
+
+  // CONTEXT decides what three letters mean. On a transport leg they are an airport code --
+  // that is how you type a flight. As a place you STAY they are a city: Goa, Kos, Hue, Nis,
+  // Rio. Reading those as codes teleported them silently (Goa landed on Genoa, Kos on
+  // Cambodia) because the offline table answers instantly and looks authoritative.
+  // The table still outranks the cache, which is what kept old bad coordinates alive.
+  if (air && kind !== "stay") {
+    const point = fromTable();
+    try { localStorage.setItem(key, JSON.stringify(point)); } catch (e) {}
+    return point;
   }
+
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
   if (cached && cached.countryCode !== undefined) return cached;
   try {
     let point = null;
-    // Airports go to Nominatim and ONLY Nominatim -- it is the only one of the two that
-    // can be asked for an aerodrome.
-    if (IATA_RE.test(raw)) point = await geocodeAirport(raw.toUpperCase(), raw);
-    else if (AIRPORT_WORD_RE.test(raw)) point = await geocodeAirport(null, raw);
-    // Everything else is a place: Open-Meteo first, so a normal trip barely touches
-    // Nominatim's rate-limited service at all...
+    if (AIRPORT_WORD_RE.test(raw)) point = await geocodeAirport(null, raw);
+    // Open-Meteo's settlement gazetteer first: it is the one that reliably picks the major
+    // city, and it keeps a normal trip off Nominatim's rate-limited service entirely.
     if (!point) point = await openMeteoGeocode(raw);
-    // ...and Nominatim is the backstop for anything its gazetteer has never heard of
-    // (hamlets, villas, a named beach).
-    if (!point) {
-      const d = await nominatim(raw, 1);
-      if (Array.isArray(d) && d[0]) point = nominatimPoint(d[0]);
-    }
+    if (!point) point = await nominatimPlace(raw);
+    // Only once nothing recognises it as a place is a three-letter token worth reading as a
+    // code. A code that is NOT in the table is never worth a free-text " airport" search --
+    // that query is what invents a location out of nothing.
+    if (!point && air) point = fromTable();
     if (!point) return null;
     localStorage.setItem(key, JSON.stringify(point));
     return point;
@@ -2660,6 +2689,7 @@ function renderRouteCheck(resolved) {
           + (r.no ? "" : "\u00b7 ")
           + `<b>${r.p.name}</b> <span class="where">\u2192 ${at || "?"} `
           + `(${r.p.lat.toFixed(2)}, ${r.p.lng.toFixed(2)})</span>`
+          + (r.p.weak ? ` <span class="odd">not a known town \u2014 guessed</span>` : "")
           + (r.detour > 600 ? ` <span class="odd">+${Math.round(r.detour).toLocaleString()} mi detour</span>` : "")
           + `</li>`;
       }).join("")
@@ -2679,7 +2709,7 @@ async function renderGlobe() {
 
   const resolved = [], failed = [];
   for (const s of stops) {
-    const g = await geocode(s.name);
+    const g = await geocode(s.name, s.kind);
     if (g) resolved.push({ ...g, name: s.name, kind: s.kind }); else failed.push(s.name);
   }
   if (!resolved.length) {
@@ -2871,7 +2901,10 @@ document.getElementById("fullscreenBtn").addEventListener("click", () => {
 });
 
 document.getElementById("regeocodeBtn").addEventListener("click", () => {
-  orderedStops(activeItin()).forEach(s => localStorage.removeItem(geoCacheKey(s.name)));
+  orderedStops(activeItin()).forEach(s => {
+    localStorage.removeItem(geoCacheKey(s.name, "stay"));
+    localStorage.removeItem(geoCacheKey(s.name, "via"));
+  });
   renderGlobe();
 });
 
