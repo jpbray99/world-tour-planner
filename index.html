@@ -1452,11 +1452,27 @@ async function renderTripStats() {
   for (let i = 0; i < coords.length - 1; i++) {
     const d = haversineKm(coords[i], coords[i + 1]);
     km += d;
-    if (d >= 1) hops.push({ d, from: coords[i].name, to: coords[i + 1].name });
+    hops.push({ d, from: coords[i].name, to: coords[i + 1].name });
   }
-  const mi = d => Math.round(d * 0.621371).toLocaleString();
-  const milesTitle = hops.length
-    ? "Longest hops:\n" + hops.slice().sort((a, b) => b.d - a.d).slice(0, 8)
+  const miNum = d => d * 0.621371;
+  const mi = d => Math.round(miNum(d)).toLocaleString();
+  // A stop that resolved to the wrong place has a signature: the route flies out to it and
+  // straight back, so one long hop appears twice, reversed. No real itinerary does that --
+  // you do not cross an ocean and return before carrying on. That PATTERN is what names the
+  // culprit; the size of the grand total never does, because a wrong total still looks like
+  // a plausible number for a world tour (JP, 2026-08-20).
+  const bogus = [];
+  for (let i = 0; i + 1 < hops.length; i++) {
+    if (miNum(hops[i].d) < 500) continue;
+    if (miNum(haversineKm(coords[i], coords[i + 2])) > 25) continue;   // not a reversal
+    bogus.push({ where: hops[i].to, waste: hops[i].d + hops[i + 1].d });
+  }
+  // ...and a single hop longer than any flight that exists catches a bad stop with no
+  // return leg after it, which the reversal test cannot see.
+  hops.forEach(h => { if (miNum(h.d) > 9500) bogus.push({ where: h.to, waste: h.d }); });
+
+  const milesTitle = hops.filter(h => h.d >= 1).length
+    ? "Longest hops:\n" + hops.filter(h => h.d >= 1).sort((a, b) => b.d - a.d).slice(0, 8)
         .map(h => `${h.from} \u2192 ${h.to}: ${mi(h.d)} mi`).join("\n")
     : "";
   // "Legs" counts EVERY transport, not just flights -- a drive and a train are legs too,
@@ -1482,6 +1498,11 @@ async function renderTripStats() {
     stat(countries.size, countries.size === 1 ? "country" : "countries") +
     stat(new Set(stops.filter(x => x.kind === "stay").map(x => x.name.toLowerCase())).size, "cities") +
     stat(mi(km), "miles", milesTitle) +
+    (bogus.length ? stat("\u26a0 " + bogus.length, bogus.length === 1 ? "bad stop" : "bad stops",
+       "The route flies out to these and straight back, so they resolved to the wrong "
+       + "place. They are inflating the mileage above:\n"
+       + bogus.map(b => `${b.where}: +${mi(b.waste)} phantom mi`).join("\n")
+       + "\n\nFix: Globe tab \u2192 Re-geocode.") : "") +
     stat(legs, legs === 1 ? "leg" : "legs", legsTitle) +
     stat(hotelNights, hotelNights === 1 ? "hotel night" : "hotel nights") +
     stat(bnbNights, bnbNights === 1 ? "rental night" : "rental nights") +
@@ -2369,7 +2390,12 @@ const IATA_RE = /^[A-Za-z]{3}$/;
 const AIRPORT_WORD_RE = /\bairports?\b/i;
 // Bumped from mpvGeo_ so every coordinate cached by the broken lookup is ignored on sight
 // rather than quietly outliving the fix.
-const GEO_CACHE_PREFIX = "mpvGeo2_";
+// Bumped to _3 on 2026-08-20. A cached coordinate is trusted forever and nothing about it
+// looks wrong -- the pin is simply on the wrong continent and the trip total is quietly
+// thousands of miles too high. Every entry written before the offline IATA table existed
+// (when "YUL" resolved to Yuen Long, Hong Kong) is still in this cache, which is why the
+// mileage stayed wrong long after the resolver was fixed. Bumping the prefix retires them.
+const GEO_CACHE_PREFIX = "mpvGeo3_";
 const geoCacheKey = name => GEO_CACHE_PREFIX + name.trim().toLowerCase();
 
 // Nominatim's usage policy is ONE request per second, and a fresh trip asks about every
@@ -2472,6 +2498,17 @@ async function geocode(name) {
   const raw = (name || "").trim();
   if (!raw) return null;
   const key = geoCacheKey(raw);
+  // The offline IATA table is exact, instant and never rate-limited, so it wins over
+  // anything the cache remembers. Checking the cache first is what let one bad airport
+  // coordinate survive every later fix.
+  if (IATA_RE.test(raw)) {
+    const a = airportByCode(raw.toUpperCase());
+    if (a) {
+      const point = { lat: a.lat, lng: a.lng, display: raw.toUpperCase() + " airport", countryCode: a.cc };
+      try { localStorage.setItem(key, JSON.stringify(point)); } catch (e) {}
+      return point;
+    }
+  }
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
   if (cached && cached.countryCode !== undefined) return cached;
