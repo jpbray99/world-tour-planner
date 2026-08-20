@@ -4,8 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>World Tour Planner</title>
-<!-- Globe.gl (MIT, built on Three.js) -- no API key/account needed, unlike Mapbox. -->
-<script src="https://unpkg.com/globe.gl@2"></script>
+<!-- Mapbox GL JS: real satellite globe (JP supplied the token 2026-08-20). The token is a
+     PUBLIC pk.* token, which Mapbox designs to ship in client-side code. -->
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet" />
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
 <style>
   :root {
     --bg: #faf8f5; --panel: #ffffff; --ink: #1c1a17; --ink-dim: #6b6459;
@@ -36,6 +38,15 @@
 
   #content { flex: 1; overflow: auto; padding: 20px; min-height: 0; }
   #view-calendar.active { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  /* The globe is the point of this view -- give it everything left, not a third. */
+  #view-globe.active { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  #globeViz { flex: 1; min-height: 420px; border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--border); }
+  #globeViz:fullscreen { border-radius: 0; border: none; }
+  .mapboxgl-popup-content { font-family: inherit; font-size: 12px; padding: 6px 9px; }
+  .stop-pin { display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: 11px; font-weight: 700; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
   .view { display: none; }
   .view.active { display: block; }
 
@@ -165,7 +176,15 @@
   #chatInputRow textarea { flex: 1; height: 38px; }
   #settingsBtn { cursor: pointer; }
 
-  dialog { border: none; border-radius: 10px; padding: 20px; width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
+  dialog { border: none; border-radius: 10px; padding: 22px 24px; width: min(560px, calc(100vw - 40px));
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15); }
+  /* Currency is a 3-letter code -- it never needs a full-width control next to a price. */
+  dialog select.cur { width: 96px; flex: 0 0 96px; }
+  /* min-width:0 lets the price field shrink; without it the input's intrinsic width
+     kept the pair from fitting on one line and the currency wrapped below. */
+  dialog .field { display: flex; flex-direction: column; min-width: 0; }
+  dialog .field > input, dialog .field > select { width: 100%; }
+  dialog .field > label { margin-top: 0; }
   dialog h3 { margin: 0 0 4px; font-size: 14px; }
   dialog .muted { margin-bottom: 12px; }
   dialog label { display: block; font-size: 11.5px; color: var(--ink-dim); margin-top: 10px; }
@@ -233,10 +252,6 @@
           </select>
         </div>
       </div>
-      <div class="row" style="gap:6px;margin-bottom:6px">
-        <button class="btn" id="calPrevBtn" title="Scroll left (or press ←)">← Prev days</button>
-        <button class="btn" id="calNextBtn" title="Scroll right (or press →)">Next days →</button>
-      </div>
       <div id="calWrap" tabindex="0"><div id="calGrid"></div></div>
     </div>
 
@@ -284,14 +299,14 @@
     </div>
 
     <div class="view" id="view-globe">
-      <div class="card row" style="justify-content:space-between">
+      <div class="card row" style="justify-content:space-between;margin-bottom:8px">
         <div class="muted" id="globeStatus">Showing stops from the current itinerary's day locations, in order.</div>
-        <button class="btn" id="fullscreenBtn">⛶ Fullscreen</button>
-        <button class="btn" id="regeocodeBtn">Re-fetch coordinates</button>
+        <div class="row">
+          <button class="btn" id="fullscreenBtn">⛶ Fullscreen</button>
+          <button class="btn" id="regeocodeBtn">Re-fetch coordinates</button>
+        </div>
       </div>
-      <div class="card" style="padding:0;overflow:hidden">
-        <div id="globeViz" style="width:100%;height:560px"></div>
-      </div>
+      <div id="globeViz"></div>
     </div>
   </div>
 </div>
@@ -315,6 +330,14 @@
   <input id="bridgeUrl" value="http://localhost:3100" />
   <label>Bridge token</label>
   <input id="bridgeToken" type="password" placeholder="from .mac-bridge/.env → MAC_BRIDGE_TOKEN" />
+  <label>Mapbox public token (for the globe)</label>
+  <input id="mapboxToken" type="password" placeholder="pk.… — never an sk. token" />
+  <label>Move this trip between devices</label>
+  <div class="row">
+    <button class="btn" id="exportBtn" type="button">Export to file</button>
+    <button class="btn" id="importBtn" type="button">Import from file</button>
+    <input id="importFile" type="file" accept="application/json,.json" style="display:none" />
+  </div>
   <div class="foot">
     <button class="btn" id="settingsCancel">Cancel</button>
     <button class="btn primary" id="settingsSave">Save</button>
@@ -365,6 +388,7 @@ function loadState() {
   s.activeItinId = s.itineraries.find(i => i.id === s.activeItinId) ? s.activeItinId : s.itineraries[0].id;
   s.bridgeUrl = s.bridgeUrl || "http://localhost:3100";
   s.bridgeToken = s.bridgeToken || "";
+  s.mapboxToken = s.mapboxToken || "";
   s.chatLog = s.chatLog || [];
   s.calendarView = "timeline"; // JP 2026-08-20: calendar/timeline view permanently, no toggle
   s.selectedDayId = s.selectedDayId || null;
@@ -504,8 +528,6 @@ function scrollDays(n) {
   const max = wrap.scrollWidth - wrap.clientWidth;
   wrap.scrollLeft = Math.max(0, Math.min(max, wrap.scrollLeft + n * step));
 }
-document.getElementById("calPrevBtn").addEventListener("click", () => scrollDays(-3));
-document.getElementById("calNextBtn").addEventListener("click", () => scrollDays(3));
 document.getElementById("calWrap").addEventListener("keydown", e => {
   if (e.key === "ArrowLeft") { e.preventDefault(); moveSelection(-1); }
   if (e.key === "ArrowRight") { e.preventDefault(); moveSelection(1); }
@@ -624,7 +646,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
         Lands the NEXT day \u2014 arrival shows on the following day's column</label>
       <div class="row">
         <div style="flex:1"><label class="muted">Price PER PERSON (\u00d7${it.pax} in budget)</label><input id="t_price" type="number" value="${t.price != null ? t.price : ""}" /></div>
-        <div><label class="muted">Currency</label><select id="t_cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${t.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
+        <div class="field"><label class="muted">Currency</label><select id="t_cur" class="cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${t.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
       </div>
       <label class="muted">Operator / notes</label>
       <input id="t_op" value="${t.airline || t.operator || ""}" placeholder="Air Canada, Renfe, ..." />
@@ -641,9 +663,9 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
         <div style="flex:1"><label class="muted">End (optional)</label><input id="a_end" type="time" value="${a.endTime || ""}" /></div>
       </div>
       <label class="muted">Cost (optional) — per person</label>
-      <div class="row">
-        <input id="a_price" type="number" value="${a.price || ""}" placeholder="0" style="width:100px" />
-        <select id="a_cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${a.currency===c?"selected":""}>${c}</option>`).join("")}</select>
+      <div class="row" style="align-items:flex-end">
+        <div class="field" style="flex:1"><input id="a_price" type="number" value="${a.price != null ? a.price : ""}" placeholder="0" /></div>
+        <div class="field"><select id="a_cur" class="cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${a.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
       </div>
       <label class="muted">Notes (confirmation number, address…)</label>
       <textarea id="a_notes" rows="2">${a.notes || ""}</textarea>
@@ -674,8 +696,12 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
           <input id="f_checkout" type="date" value="${h.checkOut || addDays(h.checkIn || day.date, h.nights || 1)}" /></div>
       </div>
       <div id="f_nightsOut" class="muted"></div>
-      <label class="muted">Price / night</label><input id="f_price" type="number" value="${h.price || ""}" />
-      <label class="muted">Currency</label><select id="f_cur">${["USD","CAD","EUR","GBP","AUD","JPY"].map(c=>`<option ${h.currency===c?"selected":""}>${c}</option>`).join("")}</select>
+      <div class="row" style="align-items:flex-end">
+        <div class="field" style="flex:1"><label class="muted">Price / night</label>
+          <input id="f_price" type="number" value="${h.price != null ? h.price : ""}" /></div>
+        <div class="field"><label class="muted">Currency</label>
+          <select id="f_cur" class="cur">${["CAD","USD","EUR","GBP","AUD","JPY"].map(c=>`<option ${h.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
+      </div>
       <label class="muted">Photo — paste a LISTING link (Airbnb, Booking, hotel site) or a direct image URL</label>
       <div class="row">
         <input id="f_photo" value="${h.photoUrl || ""}" placeholder="https://airbnb.ca/rooms/… or https://…jpg" style="flex:1" />
@@ -1693,12 +1719,14 @@ async function renderCompare() {
 document.getElementById("settingsBtn").addEventListener("click", () => {
   document.getElementById("bridgeUrl").value = state.bridgeUrl;
   document.getElementById("bridgeToken").value = state.bridgeToken;
+  document.getElementById("mapboxToken").value = state.mapboxToken;
   document.getElementById("settingsDialog").showModal();
 });
 document.getElementById("settingsCancel").addEventListener("click", () => document.getElementById("settingsDialog").close());
 document.getElementById("settingsSave").addEventListener("click", () => {
   state.bridgeUrl = document.getElementById("bridgeUrl").value.trim() || "http://localhost:3100";
   state.bridgeToken = document.getElementById("bridgeToken").value;
+  state.mapboxToken = document.getElementById("mapboxToken").value.trim();
   save(); document.getElementById("settingsDialog").close(); checkBridge();
 });
 
@@ -1788,13 +1816,15 @@ document.getElementById("chatInput").addEventListener("keydown", e => {
 // at most ~1 request/sec and no hammering -- caching also just makes this instant on
 // every render after the first).
 let globeInstance = null;
+// Deliberately NOT hardcoded: this repo is public, and a Mapbox token committed here can
+// be lifted and burned against JP's quota (GitHub's own secret scanner blocks the push).
+// Stored per device via the settings dialog instead.
+let globeMarkers = [];
 
 async function geocode(name) {
   const key = "mpvGeo_" + name.trim().toLowerCase();
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
-  // Re-fetch if the cache predates countryCode (added for the flag feature) rather than
-  // silently showing no flag forever for anything geocoded before this change.
   if (cached && cached.countryCode !== undefined) return cached;
   try {
     const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&q=" + encodeURIComponent(name);
@@ -1833,95 +1863,101 @@ function orderedStops(it) {
 
 async function renderGlobe() {
   const status = document.getElementById("globeStatus");
+  const el = document.getElementById("globeViz");
   const it = activeItin();
   const stops = orderedStops(it);
   if (!stops.length) {
     status.textContent = "No day locations set yet -- add destinations on the Calendar tab first.";
     return;
   }
-  status.textContent = `Geocoding ${stops.length} stop(s)…`;
+  status.textContent = `Locating ${stops.length} stop(s)\u2026`;
 
-  const resolved = [];
-  const failed = [];
+  const resolved = [], failed = [];
   for (const name of stops) {
     const g = await geocode(name);
-    if (g) resolved.push({ name, ...g });
-    else failed.push(name);
+    if (g) resolved.push({ name, ...g }); else failed.push(name);
   }
-
   if (!resolved.length) {
-    status.textContent = "Couldn't geocode any of these locations (offline, or names too ambiguous). Try more specific names, e.g. 'Rome, Italy'.";
+    status.textContent = "Couldn't locate any of these places. Try more specific names, e.g. 'Rome, Italy'.";
+    return;
+  }
+  status.textContent = `${resolved.length}/${stops.length} stops mapped`
+    + (failed.length ? ` \u2014 couldn't find: ${failed.join(", ")}` : "")
+    + ". Drag to spin, scroll to zoom.";
+
+  if (!state.mapboxToken) {
+    status.innerHTML = 'Add a Mapbox token in \u2699 (top right of the assistant panel) to show the globe. '
+      + 'Free at mapbox.com \u2014 use the PUBLIC token, the one starting <b>pk.</b>';
+    return;
+  }
+  if (typeof mapboxgl === "undefined") {
+    status.textContent = "Map library failed to load (offline?). It comes from api.mapbox.com and browser-caches after one load.";
     return;
   }
 
-  status.textContent = `${resolved.length}/${stops.length} stops mapped` + (failed.length ? ` — couldn't find: ${failed.join(", ")}` : "") + ". Drag to spin, scroll to zoom.";
-
-  const pointsData = resolved.map((p, i) => ({ lat: p.lat, lng: p.lng, name: p.name, order: i + 1 }));
-  const arcsData = [];
-  for (let i = 0; i < resolved.length - 1; i++) {
-    arcsData.push({
-      startLat: resolved[i].lat, startLng: resolved[i].lng,
-      endLat: resolved[i + 1].lat, endLng: resolved[i + 1].lng,
-    });
-  }
-
-  const el = document.getElementById("globeViz");
   if (!globeInstance) {
-    if (typeof Globe === "undefined") {
-      status.textContent = "Globe library failed to load (offline?). It's fetched from unpkg.com — needs internet once, then browser-caches.";
-      return;
-    }
-    globeInstance = Globe()(el)
-      .width(el.clientWidth)
-      .height(el.clientHeight)
-      // earth-blue-marble.jpg is already the highest-res texture three-globe ships
-      // (1.46MB vs ~250-900KB for the alternatives, checked live) -- the blur wasn't the
-      // texture, it was the WebGL canvas rendering at 1x on a Retina display and getting
-      // upscaled. Fixed below via setPixelRatio.
-      .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
-      .backgroundColor("rgba(0,0,0,0)")
-      .atmosphereColor("#7fb0ff")
-      .atmosphereAltitude(0.18);
-    globeInstance.renderer().setPixelRatio(window.devicePixelRatio || 1);
-    // Without an explicit width/height, Globe.gl sizes off the window rather than this
-    // container, so the sphere overflowed the card and got clipped by its overflow:hidden.
-    window.addEventListener("resize", () => {
-      if (globeInstance) globeInstance.width(el.clientWidth).height(el.clientHeight);
+    mapboxgl.accessToken = state.mapboxToken;
+    globeInstance = new mapboxgl.Map({
+      container: el,
+      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      projection: "globe",          // real 3D globe, not a flat mercator sheet
+      center: [resolved[0].lng, resolved[0].lat],
+      zoom: 1.6,
+      attributionControl: true,
     });
-    document.addEventListener("fullscreenchange", () => {
-      if (globeInstance) globeInstance.width(el.clientWidth).height(el.clientHeight);
+    globeInstance.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+    globeInstance.on("style.load", () => {
+      globeInstance.setFog({ color: "rgb(186,210,235)", "high-color": "rgb(36,92,223)",
+        "horizon-blend": 0.02, "space-color": "rgb(11,11,25)", "star-intensity": 0.6 });
+      drawRoute(resolved);
     });
-    // Slow constant spin until the user first drags, matching the reference feel.
-    const controls = globeInstance.controls();
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.4;
-    el.addEventListener("pointerdown", () => { controls.autoRotate = false; }, { once: true });
+    // Resizing matters here: the container is flex-sized and starts at 0 in a hidden tab.
+    window.addEventListener("resize", () => globeInstance && globeInstance.resize());
+    document.addEventListener("fullscreenchange", () => globeInstance && globeInstance.resize());
   } else {
-    globeInstance.width(el.clientWidth).height(el.clientHeight);
+    globeInstance.resize();
+    if (globeInstance.isStyleLoaded()) drawRoute(resolved);
+    else globeInstance.once("style.load", () => drawRoute(resolved));
+  }
+}
+
+function drawRoute(resolved) {
+  globeMarkers.forEach(m => m.remove());
+  globeMarkers = [];
+  resolved.forEach((p, i) => {
+    const pin = document.createElement("div");
+    pin.className = "stop-pin";
+    pin.textContent = String(i + 1);
+    const marker = new mapboxgl.Marker({ element: pin })
+      .setLngLat([p.lng, p.lat])
+      .setPopup(new mapboxgl.Popup({ offset: 14 }).setText(`${i + 1}. ${p.name}`))
+      .addTo(globeInstance);
+    globeMarkers.push(marker);
+  });
+
+  const geojson = {
+    type: "Feature",
+    geometry: { type: "LineString", coordinates: resolved.map(p => [p.lng, p.lat]) },
+  };
+  if (globeInstance.getSource("route")) {
+    globeInstance.getSource("route").setData(geojson);
+  } else {
+    globeInstance.addSource("route", { type: "geojson", data: geojson, lineMetrics: true });
+    globeInstance.addLayer({
+      id: "route", type: "line", source: "route",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#ffffff", "line-width": 2, "line-opacity": 0.9,
+               "line-dasharray": [2, 1.5] },
+    });
   }
 
-  globeInstance
-    .pointsData(pointsData)
-    .pointLat("lat").pointLng("lng")
-    .pointColor(() => "#2f6f5e")
-    .pointAltitude(0.012)
-    .pointRadius(0.45)
-    .pointLabel(p => `${p.order}. ${p.name}`)
-    .labelsData(pointsData)
-    .labelLat("lat").labelLng("lng")
-    .labelText(p => String(p.order))
-    .labelSize(1.1)
-    .labelDotRadius(0)
-    .labelColor(() => "rgba(255,255,255,0.95)")
-    .labelResolution(2)
-    .arcsData(arcsData)
-    .arcColor(() => ["#2f6f5e", "#7fb0ff"])
-    .arcDashLength(0.4)
-    .arcDashGap(0.15)
-    .arcDashAnimateTime(2500)
-    .arcStroke(0.6)
-    .pointOfView({ lat: resolved[0].lat, lng: resolved[0].lng, altitude: 2.2 }, 800);
+  if (resolved.length > 1) {
+    const b = new mapboxgl.LngLatBounds();
+    resolved.forEach(p => b.extend([p.lng, p.lat]));
+    globeInstance.fitBounds(b, { padding: 90, duration: 1200, maxZoom: 5 });
+  }
 }
+
 document.getElementById("fullscreenBtn").addEventListener("click", () => {
   const el = document.getElementById("globeViz");
   if (document.fullscreenElement) document.exitFullscreen();
@@ -1931,6 +1967,40 @@ document.getElementById("fullscreenBtn").addEventListener("click", () => {
 document.getElementById("regeocodeBtn").addEventListener("click", () => {
   orderedStops(activeItin()).forEach(name => localStorage.removeItem("mpvGeo_" + name.trim().toLowerCase()));
   renderGlobe();
+});
+
+// ---------- Export / import ----------
+// Browser storage is per-ORIGIN, so the local copy and the public GitHub Pages copy each
+// have their own separate data -- and a phone starts empty no matter what. A file is the
+// simplest honest bridge between them; there is no server holding this trip.
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const payload = { version: 1, exportedAt: new Date().toISOString(),
+    homeCurrency: state.homeCurrency, itineraries: state.itineraries, routeOptions: state.routeOptions };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `world-tour-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+});
+document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
+document.getElementById("importFile").addEventListener("change", async e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!data || !Array.isArray(data.itineraries) || !data.itineraries.length) {
+      alert("That file doesn't look like a World Tour Planner export."); return;
+    }
+    if (!confirm(`Replace the trip currently on this device with "${data.itineraries[0].name || "imported trip"}"?\n\nThis overwrites what is here now.`)) return;
+    state.itineraries = data.itineraries;
+    state.routeOptions = data.routeOptions || {};
+    state.homeCurrency = data.homeCurrency || state.homeCurrency;
+    state.activeItinId = state.itineraries[0].id;
+    save(); renderCalendar();
+  } catch (err) {
+    alert("Could not read that file: " + err.message);
+  } finally { e.target.value = ""; }
 });
 
 // ---------- init ----------
