@@ -75,7 +75,15 @@
     background: var(--panel); padding: 0 2px; opacity: .85; }
   .sun-line.sunrise span { color: #a3760f; }
   .sun-line.sunset span  { color: #5b5390; }
-  .day-meta .temp { cursor: help; }
+  .day-meta .temp { cursor: default; }
+  /* Our own tooltip instead of the native title=. title waits about a second before it
+     appears, cannot be styled, and dresses the pointer up as a "?" -- none of which JP
+     wanted on a number he reads at a glance (2026-08-20). */
+  #wxTip { position: fixed; z-index: 1200; max-width: 320px; display: none; white-space: pre-line;
+    background: #1c1a17; color: #f6f4ef; font-size: 11px; line-height: 1.45; text-align: left;
+    padding: 8px 10px; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+    pointer-events: none; }
+  #wxTip.on { display: block; }
   .day-meta .season { font-size: 10px; }
   .day-meta { font-size: 9px; color: var(--ink-dim); line-height: 1.35; margin-top: 2px; }
 
@@ -146,6 +154,7 @@
     overflow: hidden; cursor: pointer; border: 1px solid rgba(0,0,0,0.12); line-height: 1.25; }
   .tl-block.tl-flight { background: var(--warn-dim); }
   .tl-block.tl-activity { background: var(--accent-dim); }
+  .tl-block.tl-meal { background: #fbe6cf; }
   .bookmark { position: absolute; top: 2px; right: 3px; font-size: 10px; line-height: 1;
     color: #1e7e34; font-weight: 700; }
 
@@ -353,7 +362,7 @@
   <h3 id="slotTitle">Edit</h3>
   <div id="slotBody"></div>
   <div class="foot">
-    <button class="btn danger" id="slotClear">Clear</button>
+    <button class="btn danger" id="slotClear">Delete</button>
     <button class="btn" id="slotCancel">Cancel</button>
     <button class="btn primary" id="slotSave">Save</button>
   </div>
@@ -423,6 +432,9 @@ async function getUsdRate(cur) {
 }
 async function toHome(amount, currency) {
   const home = state.homeCurrency;
+  // null * rate is 0, not null -- so an unpriced hotel in a foreign currency used to slip
+  // into the total as a confident zero and never raised the "missing prices" warning.
+  if (typeof amount !== "number" || !isFinite(amount)) return null;
   if (currency === home) return amount;
   const usdRate = await getUsdRate(currency); // currency -> USD
   if (usdRate == null) return null;
@@ -614,7 +626,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
   dlg.dataset.activityId = activityId || "";
   dlg.dataset.transportId = (kind === "transport" ? (activityId || "") : "");
   const body = document.getElementById("slotBody");
-  const titles = { hotel: "Hotel \u2014 ", flight: "Flight \u2014 ", transport: "Transport \u2014 ", activity: "Activity \u2014 ", location: "Location \u2014 ", date: "Date \u2014 " };
+  const titles = { hotel: "Hotel \u2014 ", flight: "Flight \u2014 ", transport: "Transport \u2014 ", activity: "Activity \u2014 ", meal: "\ud83c\udf5d Meal \u2014 ", location: "Location \u2014 ", date: "Date \u2014 " };
   document.getElementById("slotTitle").textContent = (titles[kind] || "") + day.date;
 
   if (kind === "transport") {
@@ -661,11 +673,14 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       ${bizFieldsHtml("t", t)}`;
     wireBizFields("t");
     document.getElementById("t_calc").addEventListener("click", calcGroundTime);
-  } else if (kind === "activity") {
+  } else if (kind === "activity" || kind === "meal") {
     const a = (day.activities || []).find(x => x.id === activityId) || {};
+    // A meal IS an activity -- same times, price, booking and business fields -- so the
+    // whole dialog is reused and only the wording changes.
+    const isMeal = kind === "meal";
     body.innerHTML = `
-      <label class="muted">What is it? (activity, dinner reservation, museum, tour…)</label>
-      <input id="a_name" value="${a.name || ""}" placeholder="e.g. Dinner at Tickets" />
+      <label class="muted">${isMeal ? "Restaurant" : "What is it? (activity, dinner reservation, museum, tour…)"}</label>
+      <input id="a_name" value="${a.name || ""}" placeholder="${isMeal ? "e.g. Tickets, Barcelona" : "e.g. Dinner at Tickets"}" />
       <div class="row">
         <div style="flex:1"><label class="muted">Start (local time in ${day.location || "this city"})</label><input id="a_start" type="time" value="${a.startTime || presetTime || ""}" /></div>
         <div style="flex:1"><label class="muted">End (optional)</label><input id="a_end" type="time" value="${a.endTime || ""}" /></div>
@@ -823,12 +838,13 @@ document.getElementById("slotSave").addEventListener("click", async () => {
       const i2 = it.days.findIndex(d => d.id === day.id);
       if (i2 >= 0 && i2 + 1 < it.days.length) it.days[i2 + 1].location = to;
     }
-  } else if (kind === "activity") {
+  } else if (kind === "activity" || kind === "meal") {
     day.activities = day.activities || [];
     const existingId = dlg.dataset.activityId;
     const name = document.getElementById("a_name").value.trim();
     const rec = {
       id: existingId || uid(),
+      kind: kind === "meal" ? "meal" : undefined,   // meals ride on the activity record
       name,
       startTime: document.getElementById("a_start").value,
       endTime: document.getElementById("a_end").value,
@@ -925,12 +941,26 @@ document.getElementById("slotSave").addEventListener("click", async () => {
   }
   save(); dlg.close(); renderCalendar();
 });
+// This button only ever knew two kinds: "hotel" and "flight". "flight" was retired when
+// transports became a list, so on the two kinds the dialog actually opens with now --
+// "transport" and "activity" -- it closed the dialog and deleted nothing at all, which is
+// why an activity or a flight could not be removed (JP, 2026-08-20).
 document.getElementById("slotClear").addEventListener("click", () => {
   const dlg = document.getElementById("slotDialog");
   const it = activeItin();
   const day = it.days.find(d => d.id === dlg.dataset.dayId);
-  if (dlg.dataset.kind === "hotel") day.hotel = null;
-  if (dlg.dataset.kind === "flight") day.flight = null;
+  if (!day) { dlg.close(); return; }
+  const kind = dlg.dataset.kind;
+  if (kind === "hotel") day.hotel = null;
+  else if (kind === "flight") day.flight = null;
+  else if (kind === "transport") {
+    // The original single-flight record lives on day.flight, NOT in day.transports, so
+    // filtering the array could never remove it however many times you tried.
+    if (dlg.dataset.transportId === "legacy") day.flight = null;
+    else day.transports = (day.transports || []).filter(x => x.id !== dlg.dataset.transportId);
+  } else if (kind === "activity" || kind === "meal") {
+    day.activities = (day.activities || []).filter(x => x.id !== dlg.dataset.activityId);
+  }
   save(); dlg.close(); renderCalendar();
 });
 document.getElementById("slotCancel").addEventListener("click", () => document.getElementById("slotDialog").close());
@@ -1130,8 +1160,10 @@ function dayBodyTimelineHtml(day, prevDay) {
   });
 
   (day.activities || []).forEach(a => {
+    const meal = a.kind === "meal";
     blocks += `<div data-act="activity-edit" data-activity-id="${a.id}" style="display:contents">${timelineBlockHtml(
-      "activity", a.startTime, a.endTime, a.name || "Activity",
+      meal ? "meal" : "activity", a.startTime, a.endTime,
+      meal ? `\ud83c\udf5d ${a.name || "Meal"}` : (a.name || "Activity"),
       a.startTime + (a.endTime ? "\u2013" + a.endTime : ""), a.info || a.notes || "", a)}</div>`;
   });
 
@@ -1175,6 +1207,7 @@ function showCalendarMenu(evt, dayId, bodyEl) {
   const at = pxToTime(Math.max(0, px));
   openMenu(evt, [
     [`Add activity at ${at}`, () => openSlotDialog(dayId, "activity", null, null, at)],
+    [`\ud83c\udf5d Add meal at ${at}`, () => openSlotDialog(dayId, "meal", null, null, at)],
     ["sep"],
     [`Add flight at ${at}`, () => openSlotDialog(dayId, "transport", null, "flight", at)],
     [`Add train at ${at}`,  () => openSlotDialog(dayId, "transport", null, "train", at)],
@@ -1332,7 +1365,11 @@ async function renderCalendar() {
     col.querySelectorAll("[data-act]").forEach(el => {
       const act = el.dataset.act;
       if (act === "activity-new") el.addEventListener("click", e => { e.stopPropagation(); openSlotDialog(day.id, "activity", null); });
-      else if (act === "activity-edit") el.addEventListener("click", e => { e.stopPropagation(); openSlotDialog(day.id, "activity", el.dataset.activityId); });
+      else if (act === "activity-edit") el.addEventListener("click", e => {
+        e.stopPropagation();
+        const rec = (day.activities || []).find(x => x.id === el.dataset.activityId);
+        openSlotDialog(day.id, rec && rec.kind === "meal" ? "meal" : "activity", el.dataset.activityId);
+      });
       else if (act === "transport-edit") el.addEventListener("click", e => { e.stopPropagation(); openSlotDialog(day.id, "transport", el.dataset.transportId); });
       else el.addEventListener("click", e => { e.stopPropagation(); openSlotDialog(day.id, act); });
     });
@@ -1398,77 +1435,225 @@ async function healHotelPhotos() {
   if (changed) { save(); renderCalendar(); }
 }
 
-// Climate normal + sunrise/sunset for a city on a given calendar date, from Open-Meteo's
-// free keyless archive. The trip is in the FUTURE, so there is no forecast to read --
-// instead average a 7-day window around the same calendar date in a recent past year,
-// which is what "avg high/low for that day of year" actually means. Sunrise/sunset for a
-// given calendar date shifts by only a minute or two year to year, so the past year's
-// value is a sound stand-in rather than a guess.
-async function dayClimate(lat, lng, isoDate) {
-  const md = isoDate.slice(5);                       // MM-DD
-  const key = `mpvClim2_${lat.toFixed(1)}_${lng.toFixed(1)}_${md}`;
+// Climate normals + sunrise/sunset for a city, from Open-Meteo's free keyless archive.
+// The trip is in the FUTURE, so there is no forecast to read -- these are normals for the
+// week of the year, which is what "avg high/low for that date" actually means.
+//
+// ONE year is not a normal, it is one year's weather. A single thunderstorm on 19 Oct 2024
+// put 29mm into Phuket's 7-day window, and as that window slid day by day the average fell
+// 6 -> 5 -> 2mm and dragged the day's rating across two thresholds -- three different faces
+// on five identical days (JP, 2026-08-20). So: TEN years, fetched ONCE per city in a single
+// request and cached as 366 day-of-year normals. Fewer network calls than the old
+// per-city-per-date lookup, and the numbers actually mean what they claim to.
+const CLIMATE_START_YEAR = 2015, CLIMATE_END_YEAR = 2024;
+const CLIMATE_WINDOW_DAYS = 3;                 // +/- around the date, within each year
+const normalsInFlight = new Map();             // lat/lng key -> promise, so N days share 1 fetch
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Open-Meteo throttles HARD. The old per-day lookup fired one request per calendar day and
+// started coming back 429 partway down the trip, which is why Cairo onwards showed no
+// temperature at all while Rome and everything before it did (JP, 2026-08-20). Per-city
+// requests cut that by roughly a factor of the trip length, but a long trip is still a
+// dozen cities, so: one at a time, a polite gap between them, and a real backoff on 429
+// instead of quietly dropping the city.
+let archiveQueue = Promise.resolve();
+async function archiveFetch(url, tries = 4) {
+  const job = archiveQueue.then(async () => {
+    for (let i = 0; i < tries; i++) {
+      try {
+        const r = await fetch(url);
+        if (r.status === 429 || r.status === 503) { await sleep(1500 * Math.pow(2, i)); continue; }
+        if (!r.ok) return null;
+        return await r.json();
+      } catch (e) { await sleep(800 * Math.pow(2, i)); }
+    }
+    return null;
+  }).then(async out => { await sleep(400); return out; });
+  archiveQueue = job.then(() => {}, () => {});
+  return job;
+}
+
+function buildNormals(dl, sun) {
+  const n = dl.time.length, W = CLIMATE_WINDOW_DAYS, out = {};
+  const num = v => (typeof v === "number" ? v : null);
+  for (let j = 0; j < n; j++) {
+    const md = dl.time[j].slice(5);
+    let e = out[md];
+    if (!e) e = out[md] = { hi: [], lo: [], rain: [] };
+    // The archive is one unbroken run of days, so a window straddling New Year still
+    // reaches into the neighbouring year rather than clipping at the boundary.
+    for (let i = Math.max(0, j - W); i <= Math.min(n - 1, j + W); i++) {
+      const hi = num(dl.temperature_2m_max[i]), lo = num(dl.temperature_2m_min[i]);
+      const rn = dl.precipitation_sum ? num(dl.precipitation_sum[i]) : null;
+      if (hi != null) e.hi.push(hi);
+      if (lo != null) e.lo.push(lo);
+      if (rn != null) e.rain.push(rn);
+    }
+  }
+  const mean = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+  const round1 = v => (v == null ? null : Math.round(v * 10) / 10);
+  const packed = {};
+  for (const md of Object.keys(out)) {
+    const e = out[md];
+    const hi = mean(e.hi), lo = mean(e.lo);
+    if (hi == null) continue;
+    packed[md] = {
+      // hi/lo are the rounded degrees shown in the header; hiExact/loExact feed the
+      // rating, so a display rounding can never nudge the score on its own.
+      hi: Math.round(hi), lo: lo == null ? null : Math.round(lo),
+      hiExact: round1(hi), loExact: round1(lo),
+      rain: round1(mean(e.rain)), sunrise: null, sunset: null,
+    };
+  }
+  // Sunrise/sunset move a minute or two year to year, so ONE recent year is a sound
+  // stand-in -- and asking for ten years of them would triple the weight of the request
+  // for no extra accuracy.
+  if (sun && sun.time) {
+    for (let j = 0; j < sun.time.length; j++) {
+      const e = packed[sun.time[j].slice(5)];
+      if (!e) continue;
+      if (sun.sunrise && sun.sunrise[j]) e.sunrise = sun.sunrise[j].slice(11, 16);
+      if (sun.sunset && sun.sunset[j]) e.sunset = sun.sunset[j].slice(11, 16);
+    }
+  }
+  return packed;
+}
+
+async function cityNormals(lat, lng) {
+  const key = `mpvClim3_${lat.toFixed(1)}_${lng.toFixed(1)}`;
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
   if (cached) return cached;
-  const yr = 2024;
-  const centre = new Date(`${yr}-${md}T00:00:00`);
-  if (isNaN(centre)) return null;
-  const start = new Date(centre.getTime() - 3 * 86400000).toISOString().slice(0, 10);
-  const end = new Date(centre.getTime() + 3 * 86400000).toISOString().slice(0, 10);
-  try {
-    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}`
-      + `&start_date=${start}&end_date=${end}`
-      + `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset&timezone=auto`;
-    const r = await fetch(url);
-    const d = await r.json();
-    const dl = d && d.daily;
-    if (!dl || !dl.temperature_2m_max) return null;
-    const avg = (arr) => {
-      const v = arr.filter(x => typeof x === "number");
-      return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
-    };
-    const mid = Math.floor((dl.sunrise || []).length / 2);
-    const out = {
-      hi: avg(dl.temperature_2m_max),
-      lo: avg(dl.temperature_2m_min),
-      rain: dl.precipitation_sum ? avg(dl.precipitation_sum) : null,
-      sunrise: dl.sunrise && dl.sunrise[mid] ? dl.sunrise[mid].slice(11, 16) : null,
-      sunset: dl.sunset && dl.sunset[mid] ? dl.sunset[mid].slice(11, 16) : null,
-    };
-    localStorage.setItem(key, JSON.stringify(out));
-    return out;
-  } catch (e) { return null; }
+  if (normalsInFlight.has(key)) return normalsInFlight.get(key);
+  const job = (async () => {
+    try {
+      const base = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}`;
+      const d = await archiveFetch(base
+        + `&start_date=${CLIMATE_START_YEAR}-01-01&end_date=${CLIMATE_END_YEAR}-12-31`
+        + `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`);
+      if (!d || !d.daily || !d.daily.temperature_2m_max) return null;
+      const sun = await archiveFetch(base
+        + `&start_date=${CLIMATE_END_YEAR}-01-01&end_date=${CLIMATE_END_YEAR}-12-31`
+        + `&daily=sunrise,sunset&timezone=auto`);
+      const packed = buildNormals(d.daily, sun && sun.daily);
+      // ~35KB per city. Storage can still be full, and a failed write must not lose the
+      // normals we already computed and are about to return.
+      try { localStorage.setItem(key, JSON.stringify(packed)); } catch (e) {}
+      return packed;
+    } catch (e) { return null; }
+    finally { normalsInFlight.delete(key); }
+  })();
+  normalsInFlight.set(key, job);
+  return job;
 }
 
-// Rates the day from the climate numbers we actually measured, and says WHY in the same
-// breath. Deliberately does not assert things the data can't support (e.g. "monsoon") --
-// it reports observed heat, cold and rainfall for that week of the year.
-function seasonRating(c) {
-  if (!c || c.hi == null) return null;
-  const hi = c.hi, lo = c.lo, rain = c.rain;
+async function dayClimate(lat, lng, isoDate) {
+  const normals = await cityNormals(lat, lng);
+  if (!normals) return null;
+  return normals[isoDate.slice(5)] || null;       // MM-DD
+}
+
+// Scores the climate CONTINUOUSLY. The old version bucketed it, so a single degree at a
+// bucket edge (28 -> 29) moved the score 2.5 points -- more than the whole gap between two
+// faces -- and two days that differ by one degree wore different emoji. Now a degree is
+// worth 0.4 and a millimetre 0.4, so small differences stay small.
+function seasonScore(c) {
+  if (!c || c.hiExact == null) return null;
+  const hi = c.hiExact, lo = c.loExact, rain = c.rain;
   const bits = [];
   let score = 0;                                   // + good, - bad
 
-  if (hi >= 18 && hi <= 28) { score += 2; bits.push(`comfortable ${hi}\u00b0 days`); }
-  else if (hi > 34) { score -= 2; bits.push(`hot ${hi}\u00b0 days, hard going at midday`); }
-  else if (hi > 28) { score -= 0.5; bits.push(`warm ${hi}\u00b0 days`); }
-  else if (hi < 5) { score -= 2; bits.push(`cold ${hi}\u00b0 days`); }
-  else { score -= 0.5; bits.push(`cool ${hi}\u00b0 days`); }
-
-  if (lo != null && lo < 0) { score -= 1; bits.push(`freezing nights (${lo}\u00b0)`); }
-  else if (lo != null && lo >= 12 && lo <= 22) { score += 0.5; bits.push(`mild nights`); }
-
-  if (rain != null) {
-    if (rain < 1) { score += 1.5; bits.push("dry"); }
-    else if (rain < 4) { score += 0.5; bits.push(`light rain (~${rain.toFixed(1)}mm/day)`); }
-    else if (rain < 9) { score -= 1; bits.push(`wet (~${rain.toFixed(1)}mm/day)`); }
-    else { score -= 2.5; bits.push(`very wet (~${rain.toFixed(1)}mm/day)`); }
+  if (hi >= 18 && hi <= 27) { score += 2; bits.push(`comfortable ${Math.round(hi)}\u00b0 days`); }
+  else if (hi > 27) {
+    score += clamp(2 - (hi - 27) * 0.4, -2, 2);
+    bits.push(hi >= 34 ? `hot ${Math.round(hi)}\u00b0 days, hard going at midday` : `warm ${Math.round(hi)}\u00b0 days`);
+  } else {
+    score += clamp(2 - (18 - hi) * 0.4, -2, 2);
+    bits.push(hi < 5 ? `cold ${Math.round(hi)}\u00b0 days` : `cool ${Math.round(hi)}\u00b0 days`);
   }
 
+  if (lo != null) {
+    if (lo >= 12 && lo <= 22) { score += 0.5; bits.push("mild nights"); }
+    else {
+      score += clamp(0.5 - (lo > 22 ? lo - 22 : 12 - lo) * 0.15, -1.5, 0.5);
+      if (lo < 0) bits.push(`freezing nights (${Math.round(lo)}\u00b0)`);
+      else if (lo > 22) bits.push(`warm nights (${Math.round(lo)}\u00b0)`);
+      else bits.push(`chilly nights (${Math.round(lo)}\u00b0)`);
+    }
+  }
+
+  if (rain != null) {
+    score += clamp(1.5 - rain * 0.4, -2.5, 1.5);
+    if (rain < 1) bits.push("dry");
+    else bits.push(`${rain < 4 ? "light rain" : rain < 9 ? "wet" : "very wet"} (~${rain.toFixed(1)}mm/day)`);
+  }
+  return { score, bits };
+}
+
+// The verdict belongs to the STAY, not to Tuesday. "Is this a good time to visit?" is a
+// question about visiting Phuket, and you do not visit a Tuesday -- yet scoring each day
+// on its own let five identical Phuket days straddle a threshold and show three different
+// faces in a row (JP, 2026-08-20). So one score for the whole run of days in a city, one
+// face on all of them. Per-day temperatures still vary, because those really do.
+function stayRating(name, dates, climates) {
+  const scored = climates.map(seasonScore).filter(Boolean);
+  if (!scored.length) return null;
+  const score = scored.reduce((a, x) => a + x.score, 0) / scored.length;
   const face = score >= 2.5 ? "\ud83d\ude42" : score >= 0 ? "\ud83d\ude10" : "\ud83d\ude41";
   const verdict = score >= 2.5 ? "Good time to visit" : score >= 0 ? "Average time to visit" : "Poor time to visit";
-  return { face, text: `${verdict}: ${bits.join(", ")}. Based on this week of the year in recent years.` };
+  // Describe the MIDDLE of the stay: it is the most representative single day, and mixing
+  // the first and last day's numbers into one sentence would read as a contradiction.
+  const mid = scored[Math.floor(scored.length / 2)];
+  const span = dates.length > 1 ? ` ${dates[0]} to ${dates[dates.length - 1]}` : ` ${dates[0]}`;
+  const stay = dates.length > 1 ? `${dates.length}-day stay` : "day";
+  return { face, score, text: `${verdict}: ${name},${span}. Typical for this ${stay}: `
+    + `${mid.bits.join(", ")}. Normals for this week of the year, averaged over `
+    + `${CLIMATE_END_YEAR - CLIMATE_START_YEAR + 1} years.` };
 }
+
+// One shared tooltip, delegated from document so it survives every grid re-render, shows
+// immediately on hover, and works on touch (tap to open, tap elsewhere to dismiss).
+const wxTip = document.createElement("div");
+wxTip.id = "wxTip";
+document.body.appendChild(wxTip);
+let wxTipFor = null;
+
+function positionWxTip(el) {
+  const r = el.getBoundingClientRect(), t = wxTip.getBoundingClientRect();
+  const left = Math.max(8, Math.min(r.left + r.width / 2 - t.width / 2, window.innerWidth - t.width - 8));
+  // Prefer below the cell; flip above when there is no room, so it is never cut off.
+  let top = r.bottom + 8;
+  if (top + t.height > window.innerHeight - 8) top = Math.max(8, r.top - t.height - 8);
+  wxTip.style.left = left + "px";
+  wxTip.style.top = top + "px";
+}
+
+function showWxTip(el) {
+  const text = el.dataset.tip;
+  if (!text) return;
+  wxTipFor = el;
+  wxTip.textContent = text;
+  wxTip.classList.add("on");
+  positionWxTip(el);                 // measured only once it is displayed, so size is real
+}
+
+function hideWxTip() { wxTipFor = null; wxTip.classList.remove("on"); }
+
+document.addEventListener("mouseover", e => {
+  const el = e.target.closest ? e.target.closest("[data-tip]") : null;
+  if (el) { if (el !== wxTipFor) showWxTip(el); }
+  else if (wxTipFor) hideWxTip();
+});
+document.addEventListener("click", e => {
+  const el = e.target.closest ? e.target.closest("[data-tip]") : null;
+  if (el) showWxTip(el); else hideWxTip();
+});
+// The calendar scrolls horizontally inside its own box, so follow it (capture: true picks
+// up scrolls on that inner element, which do not bubble).
+window.addEventListener("scroll", () => { if (wxTipFor) positionWxTip(wxTipFor); }, true);
+window.addEventListener("resize", () => { if (wxTipFor) positionWxTip(wxTipFor); });
 
 // Two hairlines across the day's own column, at that city's real sunrise/sunset.
 function drawSunLines(metaEl, c) {
@@ -1490,26 +1675,35 @@ function drawSunLines(metaEl, c) {
 }
 
 async function fillDayMeta(grid) {
-  const slots = Array.from(grid.querySelectorAll("[data-meta-for]"));
-  const seen = new Map();
-  for (const el of slots) {
-    const [name, date] = el.dataset.metaFor.split("|");
+  // Group the calendar into RUNS of consecutive days in one city, because the season face
+  // is rated per stay rather than per day (see stayRating). Slots come back in DOM order,
+  // which is calendar order, so a run is just a name that repeats without interruption --
+  // leaving and coming back later correctly starts a new run, rated on its own dates.
+  const runs = [];
+  for (const el of Array.from(grid.querySelectorAll("[data-meta-for]"))) {
+    const [name, date] = (el.dataset.metaFor || "").split("|");
     if (!name || !date) continue;
-    const cacheKey = name + "|" + date;
-    if (seen.has(cacheKey)) { el.innerHTML = seen.get(cacheKey); continue; }
-    const g = await geocode(name);
+    const last = runs[runs.length - 1];
+    if (last && last.name === name) { last.els.push(el); last.dates.push(date); }
+    else runs.push({ name, els: [el], dates: [date] });
+  }
+
+  for (const run of runs) {
+    const g = await geocode(run.name);
     if (!g) continue;
-    const c = await dayClimate(g.lat, g.lng, date);
-    if (!c) continue;
-    // Temperature stays in the header; sunrise/sunset are drawn ON the grid at their
-    // real times instead, where they actually mean something (JP, 2026-08-20).
-    const r = seasonRating(c);
-    const html = (c.hi != null && c.lo != null)
-      ? `<span class="temp" ${r ? `title="${r.text.replace(/"/g, "&quot;")}"` : ""}>${c.hi}\u00b0 / ${c.lo}\u00b0C${r ? ` <span class="season">${r.face}</span>` : ""}</span>`
-      : "";
-    seen.set(cacheKey, html);
-    el.innerHTML = html;
-    drawSunLines(el, c);
+    // One network call per city at most: cityNormals caches all 366 days of the year.
+    const climates = [];
+    for (const date of run.dates) climates.push(await dayClimate(g.lat, g.lng, date));
+    const r = stayRating(run.name, run.dates, climates);
+    run.els.forEach((el, i) => {
+      const c = climates[i];
+      if (!c || c.hi == null || c.lo == null) return;
+      // Temperature stays in the header; sunrise/sunset are drawn ON the grid at their
+      // real times instead, where they actually mean something (JP, 2026-08-20).
+      el.innerHTML = `<span class="temp"${r ? ` data-tip="${r.text.replace(/"/g, "&quot;")}"` : ""}>`
+        + `${c.hi}\u00b0 / ${c.lo}\u00b0C${r ? ` <span class="season">${r.face}</span>` : ""}</span>`;
+      drawSunLines(el, c);
+    });
   }
 }
 
@@ -1530,9 +1724,15 @@ async function fillDayFlags(grid) {
 async function itinTotal(it) {
   let total = 0, missing = 0, business = 0;
   const pax = Math.max(1, Number(it.pax) || 1);
+  // Broken out per category so the headline number can be AUDITED rather than trusted:
+  // "is that total right?" is only answerable if you can see what went into it.
+  const by = { transport: 0, hotels: 0, activities: 0 };
+  const counts = { transport: 0, hotels: 0, activities: 0 };
   // A line's business share is its own percentage of that line; the rest is personal.
-  const add = (amount, rec) => {
+  const add = (amount, rec, cat) => {
     total += amount;
+    by[cat] += amount;
+    counts[cat]++;
     if (rec && rec.business) business += amount * ((rec.businessPct != null ? rec.businessPct : 100) / 100);
   };
   for (const day of it.days) {
@@ -1541,30 +1741,37 @@ async function itinTotal(it) {
     for (const t of dayTransports(day)) {
       if (t.price == null) continue;
       const c = await toHome(t.price, t.currency);
-      if (c == null) missing++; else add(c * pax, t);
+      if (c == null) missing++; else add(c * pax, t, "transport");
     }
     for (const a of (day.activities || [])) {
       if (a.price == null) continue;
       const c = await toHome(a.price, a.currency);
-      if (c == null) missing++; else add(c * pax, a);
+      if (c == null) missing++; else add(c * pax, a, "activities");
     }
     if (day.hotel) {
       const c = await toHome(day.hotel.price, day.hotel.currency);
-      if (c == null) missing++; else add(c, day.hotel);
+      if (c == null) missing++; else add(c, day.hotel, "hotels");
     }
   }
-  return { total, missing, business, personal: total - business };
+  return { total, missing, business, personal: total - business, by, counts, pax };
 }
 async function updateGrandTotal() {
-  const { total, missing, business, personal } = await itinTotal(activeItin());
+  const { total, missing, business, personal, by, counts, pax } = await itinTotal(activeItin());
   const el = document.getElementById("grandTotal");
   const fmt = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency });
   el.textContent = (missing ? "\u26a0 " : "") + fmt(total);
   const pct = total > 0 ? Math.round((business / total) * 100) : 0;
-  el.title = business > 0
-    ? `Business: ${fmt(business)} (${pct}%)\nPersonal: ${fmt(personal)} (${100 - pct}%)`
-    : "No business expenses flagged yet.\nTick \u201cBusiness expense\u201d on a hotel, transport or activity to split this.";
-  el.style.cursor = "help";
+  // Show the WORKING, not just the answer: every line says what it counted and whether
+  // party size multiplied it, so the headline figure can be checked at a glance.
+  const lines = [`${fmt(total)} total \u00b7 ${pax} traveller${pax === 1 ? "" : "s"}`, ""];
+  lines.push(`Transport  ${fmt(by.transport)}   (${counts.transport} leg${counts.transport === 1 ? "" : "s"} \u00d7 ${pax})`);
+  lines.push(`Hotels     ${fmt(by.hotels)}   (${counts.hotels} night${counts.hotels === 1 ? "" : "s"}, per room)`);
+  lines.push(`Activities ${fmt(by.activities)}   (${counts.activities} \u00d7 ${pax})`);
+  if (business > 0) lines.push("", `Business ${fmt(business)} (${pct}%) \u00b7 Personal ${fmt(personal)} (${100 - pct}%)`);
+  else lines.push("", "No business expenses flagged yet.");
+  if (missing) lines.push("", `\u26a0 ${missing} item${missing === 1 ? " has" : "s have"} no price yet \u2014 not counted.`);
+  el.dataset.tip = lines.join("\n");
+  el.removeAttribute("title");
   // Hover-only (JP, 2026-08-20): visibility (not display) so the row keeps its height
   // and the header doesn't jump as the pointer moves in and out.
   const sub = document.getElementById("totalSplit");
@@ -1945,20 +2152,86 @@ let globeInstance = null;
 // Stored per device via the settings dialog instead.
 let globeMarkers = [];
 
+// Nominatim is a PLACE search, not an airport database, so a bare IATA code just lands
+// wherever that three-letter string happens to match a name. "YUL" resolved to Yuen Long,
+// Hong Kong -- so a Seoul -> YVR -> YUL finish flew home to China instead of Montreal
+// (JP, 2026-08-20). Airport-ish names are therefore resolved as airports explicitly, and
+// only a real aerodrome is accepted back: "YVR airport"'s own top hit is the SkyTrain
+// station next door, which is the right dot for the wrong reason and would break the
+// moment a code's nearest match were not on the airfield.
+const IATA_RE = /^[A-Za-z]{3}$/;
+const AIRPORT_WORD_RE = /\bairports?\b/i;
+// Bumped from mpvGeo_ so every coordinate cached by the broken lookup is ignored on sight
+// rather than quietly outliving the fix.
+const GEO_CACHE_PREFIX = "mpvGeo2_";
+const geoCacheKey = name => GEO_CACHE_PREFIX + name.trim().toLowerCase();
+
+// Nominatim's usage policy is ONE request per second, and a fresh trip asks about every
+// city at once. Fired back to back that reads as abuse and the whole origin gets blocked,
+// which surfaces as every flag and every temperature silently missing -- so they queue.
+let geoQueue = Promise.resolve();
+async function nominatim(query, limit) {
+  const url = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&extratags=1"
+    + "&limit=" + limit + "&q=" + encodeURIComponent(query);
+  const job = geoQueue.then(async () => {
+    const r = await fetch(url, { headers: { "Accept-Language": "en" } });
+    const out = r.ok ? await r.json() : null;
+    await sleep(1100);
+    return out;
+  });
+  geoQueue = job.then(() => {}, () => {});
+  return job;
+}
+
+// Nominatim reports Hong Kong and Macau with country_code "cn" -- true de jure, wrong for
+// a flag: both have their own ISO 3166-1 code and their own emoji, and a stop in Hong Kong
+// should fly the Hong Kong flag (JP, 2026-08-20). The distinction survives in the
+// subdivision tag, so read the real code back out of there.
+const SUBDIVISION_COUNTRY = { "CN-HK": "HK", "CN-MO": "MO" };
+
+function countryCodeOf(address) {
+  if (!address) return null;
+  for (const k of Object.keys(address)) {
+    if (k.indexOf("ISO3166-2") === 0 && SUBDIVISION_COUNTRY[address[k]]) return SUBDIVISION_COUNTRY[address[k]];
+  }
+  return address.country_code ? address.country_code.toUpperCase() : null;
+}
+
+function nominatimPoint(d) {
+  return {
+    lat: parseFloat(d.lat), lng: parseFloat(d.lon), display: d.display_name,
+    countryCode: countryCodeOf(d.address),
+  };
+}
+
+// code is the IATA code when the name WAS one ("YUL"), else null for a name that merely
+// says airport ("Valencia airport"). Returns null when nothing on the airfield comes
+// back, so the caller can still fall through to a plain place search.
+async function geocodeAirport(code, name) {
+  const d = await nominatim(code ? code + " airport" : name, 5);
+  if (!Array.isArray(d) || !d.length) return null;
+  const tagged = code && d.find(r => (((r.extratags || {}).iata) || "").toUpperCase() === code);
+  const aerodrome = d.find(r => r.class === "aeroway" && r.type === "aerodrome");
+  const pick = tagged || aerodrome;
+  return pick ? nominatimPoint(pick) : null;
+}
+
 async function geocode(name) {
-  const key = "mpvGeo_" + name.trim().toLowerCase();
+  const raw = (name || "").trim();
+  if (!raw) return null;
+  const key = geoCacheKey(raw);
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
   if (cached && cached.countryCode !== undefined) return cached;
   try {
-    const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&q=" + encodeURIComponent(name);
-    const r = await fetch(url, { headers: { "Accept-Language": "en" } });
-    const d = await r.json();
-    if (!d || !d[0]) return null;
-    const point = {
-      lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon), display: d[0].display_name,
-      countryCode: (d[0].address && d[0].address.country_code) ? d[0].address.country_code.toUpperCase() : null,
-    };
+    let point = null;
+    if (IATA_RE.test(raw)) point = await geocodeAirport(raw.toUpperCase(), raw);
+    else if (AIRPORT_WORD_RE.test(raw)) point = await geocodeAirport(null, raw);
+    if (!point) {
+      const d = await nominatim(raw, 1);
+      if (Array.isArray(d) && d[0]) point = nominatimPoint(d[0]);
+    }
+    if (!point) return null;
     localStorage.setItem(key, JSON.stringify(point));
     return point;
   } catch (e) { return null; }
@@ -2179,7 +2452,7 @@ document.getElementById("fullscreenBtn").addEventListener("click", () => {
 });
 
 document.getElementById("regeocodeBtn").addEventListener("click", () => {
-  orderedStops(activeItin()).forEach(name => localStorage.removeItem("mpvGeo_" + name.trim().toLowerCase()));
+  orderedStops(activeItin()).forEach(name => localStorage.removeItem(geoCacheKey(name)));
   renderGlobe();
 });
 
