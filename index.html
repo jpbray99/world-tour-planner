@@ -1769,12 +1769,18 @@ async function fillDayFlags(grid) {
 }
 
 async function itinTotal(it) {
-  let total = 0, missing = 0, business = 0;
+  let total = 0, business = 0;
   const pax = Math.max(1, Number(it.pax) || 1);
   // Broken out per category so the headline number can be AUDITED rather than trusted:
   // "is that total right?" is only answerable if you can see what went into it.
   const by = { transport: 0, hotels: 0, activities: 0 };
   const counts = { transport: 0, hotels: 0, activities: 0 };
+  // A bare count of unpriced items is a dead end -- it says something is wrong and gives
+  // you no way to go and fix it ("what doesn't have a price yet?", JP 2026-08-20). Each
+  // one is recorded with the day it sits on and what it is.
+  const missingItems = [];
+  const flag = (dayIdx, day, cat, label, reason) =>
+    missingItems.push({ n: dayIdx + 1, date: day.date, cat, label, reason });
   // A line's business share is its own percentage of that line; the rest is personal.
   const add = (amount, rec, cat) => {
     total += amount;
@@ -1782,28 +1788,46 @@ async function itinTotal(it) {
     counts[cat]++;
     if (rec && rec.business) business += amount * ((rec.businessPct != null ? rec.businessPct : 100) / 100);
   };
-  for (const day of it.days) {
+  // A missing price and an unconvertible currency are different problems and used to be
+  // reported as the same one.
+  const noRate = cur => `no ${cur || "currency"} rate`;
+  for (let i = 0; i < it.days.length; i++) {
+    const day = it.days[i];
     // Tickets and per-person activity costs multiply by party size (JP, 2026-08-20).
     // Hotel is per ROOM per night and is never multiplied.
     for (const t of dayTransports(day)) {
-      if (t.price == null) continue;
+      const label = `${t.type || "flight"} ${t.from || "?"}\u2192${t.to || "?"}`;
+      // Previously `continue` -- so an unpriced flight was skipped in SILENCE and never
+      // reached the warning at all, which is why only hotels ever showed up in it.
+      if (t.price == null) { flag(i, day, "transport", label, "no price"); continue; }
       const c = await toHome(t.price, t.currency);
-      if (c == null) missing++; else add(c * pax, t, "transport");
+      if (c == null) flag(i, day, "transport", label, noRate(t.currency));
+      else add(c * pax, t, "transport");
     }
     for (const a of (day.activities || [])) {
-      if (a.price == null) continue;
+      const label = (a.kind === "meal" ? "\ud83c\udf5d " : "") + (a.name || (a.kind === "meal" ? "Meal" : "Activity"));
+      if (a.price == null) { flag(i, day, "activities", label, "no price"); continue; }
       const c = await toHome(a.price, a.currency);
-      if (c == null) missing++; else add(c * pax, a, "activities");
+      if (c == null) flag(i, day, "activities", label, noRate(a.currency));
+      else add(c * pax, a, "activities");
     }
-    if (day.hotel) {
-      const c = await toHome(day.hotel.price, day.hotel.currency);
-      if (c == null) missing++; else add(c, day.hotel, "hotels");
+    // A red-eye is a seat, not a room: having no nightly rate is the correct state for
+    // one, so flagging it as a missing price was pure noise.
+    if (day.hotel && !day.hotel.redEye) {
+      const label = day.hotel.name || "Hotel";
+      if (day.hotel.price == null) flag(i, day, "hotels", label, "no price");
+      else {
+        const c = await toHome(day.hotel.price, day.hotel.currency);
+        if (c == null) flag(i, day, "hotels", label, noRate(day.hotel.currency));
+        else add(c, day.hotel, "hotels");
+      }
     }
   }
-  return { total, missing, business, personal: total - business, by, counts, pax };
+  return { total, missing: missingItems.length, missingItems,
+           business, personal: total - business, by, counts, pax };
 }
 async function updateGrandTotal() {
-  const { total, missing, business, personal, by, counts, pax } = await itinTotal(activeItin());
+  const { total, missing, missingItems, business, personal, by, counts, pax } = await itinTotal(activeItin());
   const el = document.getElementById("grandTotal");
   const fmt = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency });
   el.textContent = (missing ? "\u26a0 " : "") + fmt(total);
@@ -1816,7 +1840,15 @@ async function updateGrandTotal() {
   lines.push(`Activities ${fmt(by.activities)}   (${counts.activities} \u00d7 ${pax})`);
   if (business > 0) lines.push("", `Business ${fmt(business)} (${pct}%) \u00b7 Personal ${fmt(personal)} (${100 - pct}%)`);
   else lines.push("", "No business expenses flagged yet.");
-  if (missing) lines.push("", `\u26a0 ${missing} item${missing === 1 ? " has" : "s have"} no price yet \u2014 not counted.`);
+  if (missing) {
+    lines.push("", `\u26a0 ${missing} item${missing === 1 ? "" : "s"} not counted:`);
+    // Named, with the day to go to. Capped so one very incomplete trip cannot produce a
+    // tooltip taller than the window.
+    const SHOWN = 8;
+    missingItems.slice(0, SHOWN).forEach(m =>
+      lines.push(`   Day ${m.n} \u00b7 ${m.label} \u2014 ${m.reason}`));
+    if (missing > SHOWN) lines.push(`   \u2026and ${missing - SHOWN} more`);
+  }
   el.dataset.tip = lines.join("\n");
   el.removeAttribute("title");
   // Hover-only (JP, 2026-08-20): visibility (not display) so the row keeps its height
