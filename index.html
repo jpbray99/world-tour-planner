@@ -34,6 +34,13 @@
     font-size: 12.5px; font-weight: 600; color: var(--ink-dim); cursor: pointer; }
   nav button.active { background: var(--accent-dim); color: var(--accent); }
   header .totals { margin-left: auto; font-size: 12px; color: var(--ink-dim); text-align: right; }
+  /* Once published, the phone link stays on screen -- a URL you have to ask for again is a
+     URL you will not open. */
+  #publishedUrl:empty, #publishState:empty { display: none; }
+  #publishState { font-size: 11px; white-space: nowrap; }
+  #publishState.err { color: var(--bad); }
+  #publishedUrl { font-size: 11px; max-width: 190px; line-height: 1.35; }
+  #publishedUrl a { color: var(--accent); word-break: break-all; }
   header .totals b { color: var(--ink); font-size: 14px; }
 
   #content { flex: 1; overflow: auto; padding: 20px; min-height: 0; }
@@ -282,6 +289,11 @@
       Home currency total<br/><b id="grandTotal">—</b>
       <div id="totalSplit" style="font-size:10px;color:var(--ink-dim);visibility:hidden"></div>
     </div>
+    <!-- Getting the trip onto a phone is a top-level thing you DO, not a preference. It sat
+         inside the assistant panel's gear dialog, where it may as well not have existed. -->
+    <button class="btn primary" id="publishBtn" type="button" title="Push this trip to your phone now">Publish to my phone</button>
+    <div id="publishState" class="muted"></div>
+    <div id="publishedUrl" class="muted"></div>
   </header>
 
   <div id="content">
@@ -394,8 +406,12 @@
   <label>Mapbox public token (for the globe)</label>
   <input id="mapboxToken" type="password" placeholder="pk.… — never an sk. token" />
   <label>Move this trip between devices</label>
+  <label class="row" style="font-weight:400;gap:7px">
+    <input id="autoPublishInput" type="checkbox" style="width:auto" />
+    <span>Keep my phone up to date automatically<br/>
+      <span class="muted" style="font-size:11px">Publishes to a public URL a few seconds after each change.</span></span>
+  </label>
   <div class="row">
-    <button class="btn primary" id="publishBtn" type="button">Publish to my phone</button>
     <button class="btn" id="exportBtn" type="button">Export to file</button>
     <button class="btn" id="importBtn" type="button">Import from file</button>
     <input id="importFile" type="file" accept="application/json,.json" style="display:none" />
@@ -459,6 +475,9 @@ function loadState() {
   s.activeItinId = s.itineraries.find(i => i.id === s.activeItinId) ? s.activeItinId : s.itineraries[0].id;
   s.bridgeUrl = s.bridgeUrl || "http://localhost:3100";
   s.bridgeToken = s.bridgeToken || "";
+  // Publishing is the whole point of the phone copy, so it is on unless turned off. It is
+  // also what puts the trip on a PUBLIC url, so it stays a visible, reversible choice.
+  s.autoPublish = s.autoPublish !== false;
   s.mapboxToken = s.mapboxToken || "";
   s.chatLog = s.chatLog || [];
   s.calendarView = "timeline"; // JP 2026-08-20: calendar/timeline view permanently, no toggle
@@ -486,6 +505,7 @@ function evictCaches(keepPrefix) {
 let saveWarned = false;
 function save() {
   const payload = JSON.stringify(state);
+  if (typeof scheduleAutoPublish === "function") scheduleAutoPublish();
   try { localStorage.setItem(STORE_KEY, payload); return; } catch (e) {}
   evictCaches(GEO_CACHE_PREFIX);                 // stale caches first, current geocodes last
   try { localStorage.setItem(STORE_KEY, payload); return; } catch (e) {}
@@ -2333,6 +2353,7 @@ async function renderCompare() {
 document.getElementById("settingsBtn").addEventListener("click", () => {
   document.getElementById("bridgeUrl").value = state.bridgeUrl;
   document.getElementById("bridgeToken").value = state.bridgeToken;
+  document.getElementById("autoPublishInput").checked = state.autoPublish;
   document.getElementById("mapboxToken").value = state.mapboxToken;
   document.getElementById("settingsDialog").showModal();
 });
@@ -2340,6 +2361,7 @@ document.getElementById("settingsCancel").addEventListener("click", () => docume
 document.getElementById("settingsSave").addEventListener("click", () => {
   state.bridgeUrl = document.getElementById("bridgeUrl").value.trim() || "http://localhost:3100";
   state.bridgeToken = document.getElementById("bridgeToken").value;
+  state.autoPublish = document.getElementById("autoPublishInput").checked;
   state.mapboxToken = document.getElementById("mapboxToken").value.trim();
   save(); document.getElementById("settingsDialog").close(); checkBridge();
 });
@@ -2923,34 +2945,77 @@ document.getElementById("exportBtn").addEventListener("click", () => {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 });
-// Publishing is what makes the public URL show THIS trip instead of an empty planner.
-// Export already produced the right JSON, but getting that file into the repo was a manual
-// step nobody was going to do from a phone -- so the bridge commits it (JP, 2026-08-20).
-document.getElementById("publishBtn").addEventListener("click", async () => {
+// Autosave, because "remember to press Publish" is a rule the tool should keep, not JP.
+// Debounced rather than fired per keystroke: each publish is a real commit and push, and
+// GitHub Pages rebuilds after it. The bridge collapses consecutive publishes into one
+// amended commit, so a whole planning session is a single commit (JP, 2026-08-20).
+const AUTOPUBLISH_IDLE_MS = 12000;
+let autoPublishTimer = null;
+
+function setPublishState(text, isError) {
+  const el = document.getElementById("publishState");
+  el.textContent = text || "";
+  el.classList.toggle("err", !!isError);
+}
+
+// Called from save(). Only ever publishes a trip that HAS days -- an empty planner must
+// never overwrite a good published trip, which is exactly what a fresh device would do.
+function scheduleAutoPublish() {
+  if (!state.autoPublish || !tripHasDays(state)) return;
+  clearTimeout(autoPublishTimer);
+  setPublishState("Saving to phone\u2026");
+  autoPublishTimer = setTimeout(() => publishTrip(true), AUTOPUBLISH_IDLE_MS);
+}
+
+async function publishTrip(silent) {
   const btn = document.getElementById("publishBtn");
-  if (!state.bridgeToken) {
-    alert("Publishing needs the bridge token.\n\nOpen \u2699 and paste MAC_BRIDGE_TOKEN from .mac-bridge/.env.");
-    return;
-  }
+  clearTimeout(autoPublishTimer);
   const was = btn.textContent;
-  btn.disabled = true; btn.textContent = "Publishing\u2026";
+  btn.disabled = true; if (!silent) btn.textContent = "Publishing\u2026";
+  setPublishState("Publishing\u2026");
   try {
     const r = await fetch(state.bridgeUrl + "/publish-trip", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + state.bridgeToken },
+      // No Authorization header: the bridge trusts local callers for this one endpoint, so
+      // the planner never has to hold a credential. Through the tunnel it would need one.
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ homeCurrency: state.homeCurrency, itineraries: state.itineraries,
                              routeOptions: state.routeOptions }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
     // Remember our own publish, or this device is immediately offered its own trip back.
-    state.publishedAt = d.publishedAt; save();
-    alert(`Published ${d.days} days.\n\nOpen this on your phone:\n${d.url}\n\n`
-        + "GitHub Pages takes a minute to rebuild.");
+    state.publishedAt = d.publishedAt; state.publishedUrl = d.url;
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));   // not save(): would re-arm the timer
+    showPublishedUrl();
+    setPublishState("On your phone \u2014 " + new Date(d.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    if (!silent) alert(`Published ${d.days} days.\n\nOpen this on your phone:\n${d.url}\n\n`
+        + "GitHub Pages takes about a minute to rebuild, so give it a moment.");
   } catch (e) {
-    alert("Could not publish: " + e.message
+    setPublishState("Phone copy is behind \u2014 " + e.message, true);
+    if (!silent) alert("Could not publish: " + e.message
         + "\n\nThe Mac bridge has to be running (the dot next to \u2699 is green).");
   } finally { btn.disabled = false; btn.textContent = was; }
+}
+
+function showPublishedUrl() {
+  const el = document.getElementById("publishedUrl");
+  if (!state.publishedUrl) { el.innerHTML = ""; return; }
+  el.innerHTML = `On your phone:<br/><a href="${state.publishedUrl}" target="_blank" rel="noopener">`
+               + `${state.publishedUrl.replace(/^https:\/\//, "")}</a>`;
+}
+showPublishedUrl();
+
+document.getElementById("publishBtn").addEventListener("click", () => publishTrip(false));
+
+// A pending autosave must not die with the tab -- send it immediately instead.
+window.addEventListener("beforeunload", () => {
+  if (!autoPublishTimer || !state.autoPublish || !tripHasDays(state)) return;
+  const body = JSON.stringify({ homeCurrency: state.homeCurrency, itineraries: state.itineraries,
+                                routeOptions: state.routeOptions });
+  // fetch() is cancelled on unload; sendBeacon is the one request the browser promises to
+  // finish. It cannot set an Authorization header, so the token rides in the body.
+  navigator.sendBeacon(state.bridgeUrl + "/publish-trip", new Blob([body], { type: "application/json" }));
 });
 
 document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
