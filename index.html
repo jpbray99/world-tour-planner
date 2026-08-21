@@ -395,6 +395,7 @@
   <input id="mapboxToken" type="password" placeholder="pk.… — never an sk. token" />
   <label>Move this trip between devices</label>
   <div class="row">
+    <button class="btn primary" id="publishBtn" type="button">Publish to my phone</button>
     <button class="btn" id="exportBtn" type="button">Export to file</button>
     <button class="btn" id="importBtn" type="button">Import from file</button>
     <input id="importFile" type="file" accept="application/json,.json" style="display:none" />
@@ -2922,6 +2923,36 @@ document.getElementById("exportBtn").addEventListener("click", () => {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 });
+// Publishing is what makes the public URL show THIS trip instead of an empty planner.
+// Export already produced the right JSON, but getting that file into the repo was a manual
+// step nobody was going to do from a phone -- so the bridge commits it (JP, 2026-08-20).
+document.getElementById("publishBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("publishBtn");
+  if (!state.bridgeToken) {
+    alert("Publishing needs the bridge token.\n\nOpen \u2699 and paste MAC_BRIDGE_TOKEN from .mac-bridge/.env.");
+    return;
+  }
+  const was = btn.textContent;
+  btn.disabled = true; btn.textContent = "Publishing\u2026";
+  try {
+    const r = await fetch(state.bridgeUrl + "/publish-trip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + state.bridgeToken },
+      body: JSON.stringify({ homeCurrency: state.homeCurrency, itineraries: state.itineraries,
+                             routeOptions: state.routeOptions }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+    // Remember our own publish, or this device is immediately offered its own trip back.
+    state.publishedAt = d.publishedAt; save();
+    alert(`Published ${d.days} days.\n\nOpen this on your phone:\n${d.url}\n\n`
+        + "GitHub Pages takes a minute to rebuild.");
+  } catch (e) {
+    alert("Could not publish: " + e.message
+        + "\n\nThe Mac bridge has to be running (the dot next to \u2699 is green).");
+  } finally { btn.disabled = false; btn.textContent = was; }
+});
+
 document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
 document.getElementById("emptyImportBtn").addEventListener("click", () => document.getElementById("importFile").click());
 document.getElementById("emptyStartBtn").addEventListener("click", () => { addDay(); addDay(); });
