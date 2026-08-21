@@ -2903,49 +2903,69 @@ function routeIssues(it, points) {
   // Dubai to Abu Dhabi is 87 miles: an airport transfer, not a mistake. Anything past this
   // is a flight nobody recorded.
   const GAP = 100;
-  // Where the trip has actually left you, leg by leg. The transports are the record of what
-  // happened; a day label that disagrees with them is the thing that is wrong.
+  // Legs are the RECORD of what happened; a day label is only a claim about it. So position
+  // is derived from legs and never from a label -- the previous pass let a reported label
+  // become the new position, and one stale "Sanya" on day 35 then made day 36's perfectly
+  // correct "Shenzhen" read as unreachable, with the Sanya->Shenzhen flight sitting right
+  // there on screen (JP, 2026-08-21). Nothing here may claim a leg does not exist.
   let here = null, hereDay = 0;
-  // One missing flight used to produce a dozen complaints: every later day disagreed with
-  // the same stale position, so a single gap between Phuket and Singapore was reported
-  // again for Hong Kong, Sanya, Guilin and the rest. Believing the day once it has been
-  // reported collapses that back to one line per real gap -- and one line per day, since a
-  // day whose legs and label BOTH disagree is still just one day to open (JP, 2026-08-21).
+  let prevLeg = null;     // to catch the same leg saved twice
   const said = new Set();
   const add = (n, text) => { if (said.has(n)) return; said.add(n); out.push({ kind: "day", day: n, text }); };
+  // A stale label usually runs for several days in a row -- five days still reading "Cairo"
+  // is ONE thing to fix, not five. A run is collapsed into a single line that grows its day
+  // range as it goes, instead of repeating the same sentence per day.
+  let run = null;
   it.days.forEach((day, i) => {
     const n = i + 1;
     const legs = dayTransports(day);
-    for (const t of legs) {
-      const from = pt(t.from), to = pt(t.to);
-      const gap = mi(here, from);
-      if (here && from && gap > GAP) {
-        add(n, `Day ${n} sets off from ${t.from}, but the last leg left you in ${here.name} `
-             + `(day ${hereDay}, ${near(gap)} mi away) \u2014 a leg between them is missing.`);
-      }
-      if (to) { here = to; hereDay = n; }
-    }
-    // A day may legitimately be labelled with the city it STARTED in -- day 11 reads
-    // "Moraira" and flies out of Valencia. Only a label matching NEITHER end is wrong.
     const label = (day.location2 || day.location || "").trim();
     const l = pt(label);
-    if (!l) return;
-    const ends = legs.length ? [legs[0].from, legs[legs.length - 1].to] : [];
-    if (ends.some(e => (e || "").trim().toLowerCase() === label.toLowerCase())) return;
-    const gap = mi(here, l);
-    if (here && gap > GAP) {
-      add(n, legs.length
-        ? `Day ${n} is labelled ${label}, but its own legs run ${legs[0].from} \u2192 `
-          + `${legs[legs.length - 1].to} \u2014 ${near(gap)} mi from where the day ends.`
-        : `Day ${n} is labelled ${label}, but no leg ever gets you there from ${here.name} `
-          + `(day ${hereDay}, ${near(gap)} mi away) \u2014 add the missing flight or fix the label.`);
-      // Reported once; from here on take the day at its word, so the next line is the NEXT
-      // gap rather than this same one restated. Only for a day with no legs of its own --
-      // where there ARE legs they are the stronger record of where the trip went, and
-      // overriding them with the label made the following day cite a city it never landed in.
-      if (!legs.length) { here = l; hereDay = n; }
+
+    if (legs.length) {
+      run = null;
+      for (const t of legs) {
+        const from = pt(t.from), to = pt(t.to);
+        const key = `${(t.from || "").trim().toLowerCase()}>${(t.to || "").trim().toLowerCase()}`;
+        const gap = mi(here, from);
+        // Two identical legs back to back is a duplicate, not a journey. It is worth its own
+        // line because it quietly doubles that leg in BOTH the mileage and the trip total.
+        if (prevLeg && prevLeg.key === key && key !== ">") {
+          add(n, `Day ${n} repeats day ${prevLeg.day}'s ${t.from} \u2192 ${t.to} \u2014 the same leg is `
+               + `saved twice, so it is counted twice in the miles and in the total.`);
+        } else if (here && from && gap > GAP) {
+          add(n, `Day ${n} sets off from ${t.from}, but the last leg left you in ${here.name} `
+               + `(day ${hereDay}, ${near(gap)} mi away) \u2014 a leg between them is missing.`);
+        }
+        if (to) { here = to; hereDay = n; }
+        prevLeg = { key, day: n };
+      }
+      // A travel day may be labelled with the city it STARTS in -- day 11 reads "Moraira"
+      // and flies out of Valencia -- so only a label matching NEITHER end is wrong.
+      const ends = [legs[0].from, legs[legs.length - 1].to].map(e => (e || "").trim().toLowerCase());
+      if (l && label && !ends.includes(label.toLowerCase()) && here && mi(here, l) > GAP) {
+        add(n, `Day ${n} is labelled ${label}, but its own legs run ${legs[0].from} \u2192 `
+             + `${legs[legs.length - 1].to} \u2014 ${near(mi(here, l))} mi from where the day ends.`);
+      }
+      return;
     }
-    if (!here) { here = l; hereDay = n; }
+
+    if (!l) { run = null; return; }
+    if (!here) { here = l; hereDay = n; run = null; return; }   // seed from the first day
+    const gap = mi(here, l);
+    if (gap <= GAP) { run = null; return; }                     // agrees with the legs: fine
+    if (run && run.key === label.toLowerCase() && run.last === n - 1) { run.last = n; run.write(); return; }
+    const issue = { kind: "day", day: n, text: "" };
+    const at = here, atDay = hereDay, miles = near(gap);
+    run = { key: label.toLowerCase(), first: n, last: n, write() {
+      const span = this.first === this.last ? `Day ${this.first} is` : `Days ${this.first}\u2013${this.last} are`;
+      // Never "no leg gets you there": a leg may well exist, just not since the last one
+      // recorded. Say what IS known -- nothing has moved you since day N.
+      issue.text = `${span} labelled ${label}, but no leg has moved you since day ${atDay}, `
+                 + `which landed in ${at.name}, ${miles} mi away \u2014 the label is stale, or a leg is missing.`;
+    } };
+    run.write();
+    out.push(issue);
   });
   return out;
 }
