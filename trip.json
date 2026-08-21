@@ -53,7 +53,8 @@
           "date": "2026-10-05",
           "location": "Barcelona",
           "hotel": null,
-          "flight": null
+          "flight": null,
+          "food": 180
         },
         {
           "id": "sgazzqf2",
@@ -1485,5 +1486,5 @@
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-08-21T13:54:03.293Z"
+  "publishedAt": "2026-08-21T15:00:07.324Z"
 }
