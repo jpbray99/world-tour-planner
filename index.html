@@ -36,6 +36,8 @@
   header .totals { margin-left: auto; font-size: 12px; color: var(--ink-dim); text-align: right; }
   /* Once published, the phone link stays on screen -- a URL you have to ask for again is a
      URL you will not open. */
+  #settingsBtnTop { display: none; cursor: pointer; font-size: 17px; margin-left: 8px; opacity: .65; }
+  #settingsBtnTop:hover { opacity: 1; }
   #slotError:empty { display: none; }
   #slotError { margin-top: 10px; color: var(--bad); font-size: 12px; font-weight: 600; }
   .needed { border-color: var(--bad) !important; }
@@ -278,7 +280,9 @@
        was bouncing. Every link in the chain has to be allowed to shrink. */
     #main { min-height: 0; }
     #content { padding: 10px; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
-    #view-calendar.active { flex: 1 1 0; height: auto; min-height: 0; }
+    #view-calendar.active, #view-globe.active { flex: 1 1 0; height: auto; min-height: 0; }
+    /* 420px of minimum globe inside a ~500px slot forced the page to overflow again. */
+    #globeViz { min-height: 0; }
     #calWrap { flex: 1 1 0; max-height: none; min-height: 0; }
     /* Narrower day columns so ~3 fit on a phone, and the ruler stays slim. */
     #calGrid.timeline .day-col, #calGrid.timeline .add-day { width: 108px; }
@@ -289,6 +293,7 @@
        title are all things JP does not want taking room from it, so they are dropped
        outright rather than shrunk (JP, 2026-08-20). Everything still works on desktop. */
     #chat { display: none; }
+    #settingsBtnTop { display: inline; margin-left: auto; }
     header h1 { display: none; }
     header .totals { display: none; }
     /* Stats stay on ONE line and scroll sideways. Wrapping turned eight of them into a
@@ -330,6 +335,9 @@
          which are the two things worth looking at (JP, 2026-08-20). -->
     <div id="publishState" class="muted"></div>
     <div id="publishedUrl" class="muted"></div>
+    <!-- The only gear was inside the assistant panel, which a phone hides outright, so
+         nothing in settings could be reached from a phone at all. -->
+    <span id="settingsBtnTop" title="Settings">\u2699</span>
   </header>
 
   <div id="content">
@@ -2452,13 +2460,15 @@ async function renderCompare() {
 }
 
 // ---------- Settings ----------
-document.getElementById("settingsBtn").addEventListener("click", () => {
+// Both gears open the same dialog: the one in the assistant panel, and the one in the
+// header that is the ONLY one a phone can reach.
+["settingsBtn", "settingsBtnTop"].forEach(id => document.getElementById(id).addEventListener("click", () => {
   document.getElementById("bridgeUrl").value = state.bridgeUrl;
   document.getElementById("bridgeToken").value = state.bridgeToken;
   document.getElementById("autoPublishInput").checked = state.autoPublish;
   document.getElementById("mapboxToken").value = state.mapboxToken;
   document.getElementById("settingsDialog").showModal();
-});
+}));
 document.getElementById("settingsCancel").addEventListener("click", () => document.getElementById("settingsDialog").close());
 document.getElementById("settingsSave").addEventListener("click", () => {
   state.bridgeUrl = document.getElementById("bridgeUrl").value.trim() || "http://localhost:3100";
@@ -2899,7 +2909,8 @@ async function renderGlobe() {
   renderRouteCheck(resolved);
 
   if (!state.mapboxToken) {
-    status.innerHTML = 'Add a Mapbox token in \u2699 (top right of the assistant panel) to show the globe. '
+    // Do not name a place the reader cannot see: on a phone there is no assistant panel.
+    status.innerHTML = 'Add a Mapbox token in \u2699 at the top of the page to show the globe. '
       + 'Free at mapbox.com \u2014 use the PUBLIC token, the one starting <b>pk.</b>';
     return;
   }
@@ -3139,7 +3150,9 @@ async function publishTrip() {
       // the planner never has to hold a credential. Through the tunnel it would need one.
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ homeCurrency: state.homeCurrency, itineraries: state.itineraries,
-                             routeOptions: state.routeOptions }),
+                             routeOptions: state.routeOptions,
+                             // pk. only. An sk. token is a secret and must never leave here.
+                             mapboxToken: (state.mapboxToken || "").startsWith("pk.") ? state.mapboxToken : "" }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
@@ -3174,7 +3187,8 @@ showPublishedUrl();
 window.addEventListener("beforeunload", () => {
   if (!autoPublishTimer || !state.autoPublish || !tripHasDays(state) || !canPublish()) return;
   const body = JSON.stringify({ homeCurrency: state.homeCurrency, itineraries: state.itineraries,
-                                routeOptions: state.routeOptions });
+                                routeOptions: state.routeOptions,
+                                mapboxToken: (state.mapboxToken || "").startsWith("pk.") ? state.mapboxToken : "" });
   // fetch() is cancelled on unload; sendBeacon is the one request the browser promises to
   // finish. It cannot set an Authorization header, so the token rides in the body.
   navigator.sendBeacon(state.bridgeUrl + "/publish-trip", new Blob([body], { type: "application/json" }));
@@ -3227,6 +3241,13 @@ function applyPublishedTrip(d) {
   state.itineraries = d.itineraries;
   state.routeOptions = d.routeOptions || {};
   state.homeCurrency = d.homeCurrency || state.homeCurrency;
+  // The globe needs a Mapbox token and the token lived only in the browser that typed it,
+  // so the phone showed "add a token in the gear" -- for a gear that mobile hides. A pk.
+  // token is a PUBLIC token: Mapbox ships it to every browser that loads a map, and it
+  // belongs to the page, not to the device. Never overwrite one already set here.
+  if (!state.mapboxToken && typeof d.mapboxToken === "string" && d.mapboxToken.startsWith("pk.")) {
+    state.mapboxToken = d.mapboxToken;
+  }
   state.activeItinId = state.itineraries[0].id;
   state.publishedAt = d.publishedAt || d.exportedAt || "";
   save();
