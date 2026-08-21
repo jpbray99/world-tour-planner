@@ -85,12 +85,17 @@
   /* A stat with a hover breakdown behind it -- otherwise nobody knows to look. */
   .stat.has-detail { cursor: help; }
   .stat.has-detail b { border-bottom: 1px dotted var(--ink-dim); }
+  /* A warning stat reads as just another number in a row of ten unless it is coloured --
+     the whole point of flagging a bad stop is that the eye lands on it (JP, 2026-08-21). */
+  .stat.bad b { color: var(--bad); border-bottom-color: var(--bad); }
   /* The route as text. A map hides a wrong coordinate behind a pretty line; a list cannot. */
   #routeCheck:empty { display: none; }
   #routeCheck { margin-bottom: 8px; border: 1px solid var(--border); border-radius: 10px;
     background: var(--panel); padding: 10px 12px; font-size: 12px; max-height: 190px; overflow: auto; }
   #routeCheck h4 { margin: 0 0 6px; font-size: 12px; }
   #routeCheck ol { margin: 0; padding-left: 22px; }
+  #routeCheck ul.issues { margin: 0 0 8px; padding-left: 18px; }
+  #routeCheck ul.issues li { color: var(--bad); margin: 2px 0; }
   #routeCheck li { margin: 1px 0; }
   #routeCheck .where { color: var(--ink-dim); }
   #routeCheck .odd { background: var(--bad-dim); color: var(--bad); font-weight: 600;
@@ -1627,7 +1632,11 @@ async function renderTripStats() {
     const g = await geocode(s.name, s.kind);
     if (!g) continue;
     if (g.countryCode) countries.add(g.countryCode);
-    coords.push({ ...g, name: s.name });
+    // kind MUST be carried across. Without it every point arrived here as an undefined
+    // kind, the "only flag places you merely pass through" guard was true for all 25, and
+    // the Globe tab -- which does copy kind -- disagreed with this bar while a comment
+    // right below claimed they ran the same test (JP, 2026-08-21).
+    coords.push({ ...g, name: s.name, kind: s.kind });
   }
   // A round-the-world total is easy to believe and easy to get wrong: one stop that
   // geocodes to the wrong continent flings the route out and back and can add 20,000
@@ -1642,12 +1651,7 @@ async function renderTripStats() {
   }
   const miNum = d => d * 0.621371;
   const mi = d => Math.round(miNum(d)).toLocaleString();
-  // A stop that resolved to the wrong place has a signature: the route flies out to it and
-  // straight back, so one long hop appears twice, reversed. No real itinerary does that --
-  // you do not cross an ocean and return before carrying on. That PATTERN is what names the
-  // culprit; the size of the grand total never does, because a wrong total still looks like
-  // a plausible number for a world tour (JP, 2026-08-20).
-  const bogus = badStops(coords);   // same test the Route check list uses, so they agree
+  const issues = routeIssues(it, coords);   // same test the Route check list runs
 
   const milesTitle = hops.filter(h => h.d >= 1).length
     ? "Longest hops:\n" + hops.filter(h => h.d >= 1).sort((a, b) => b.d - a.d).slice(0, 8)
@@ -1677,30 +1681,54 @@ async function renderTripStats() {
   const bnbNights = it.days.filter(d => isAirbnb(d.hotel) && !d.hotel.redEye).length;
   const hotelNights = nights - bnbNights;
   const acts = it.days.reduce((n, d) => n + (d.activities || []).length, 0);
-  const attr = t => t ? ` title="${t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"` : "";
-  const stat = (v, label, title) => `<div class="stat${title ? " has-detail" : ""}"${attr(title)}><b>${v}</b><span>${label}</span></div>`;
+  // Cost per day. A grand total for a round-the-world trip is a number nobody has any feel
+  // for -- $31k could be thrifty or reckless and you cannot tell by looking at it. Divided
+  // by the days it buys, it turns into a rate you can judge against a normal week away, and
+  // against what one more day on the end would cost (JP, 2026-08-21).
+  const money = await itinTotal(it);
+  const perDay = it.days.length ? money.total / it.days.length : 0;
+  const cur = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency,
+                                                maximumFractionDigits: 0 });
+  const perDayTip = it.days.length
+    ? `${cur(money.total)} \u00f7 ${it.days.length} day${it.days.length === 1 ? "" : "s"} `
+      + `= ${cur(perDay)} a day\n`
+      + `${cur(perDay / money.pax)} per traveller per day (${money.pax} travelling)\n\n`
+      + `Transport  ${cur(money.by.transport / it.days.length)} a day\n`
+      + `Hotels     ${cur(money.by.hotels / it.days.length)} a day\n`
+      + `Activities ${cur(money.by.activities / it.days.length)} a day`
+      // Unpriced items drag the rate DOWN, so an incomplete trip looks cheaper per day than
+      // it is. A bare count of them is a dead end though -- "2 items have no price, which
+      // ones?" (JP, 2026-08-21) -- so name them and the day to open, same as the total does.
+      + (money.missing ? `\n\n\u26a0 ${money.missing} item${money.missing === 1 ? " has" : "s have"} no price yet, `
+                       + `so this is a floor, not the real rate:\n`
+                       + money.missingItems.slice(0, 8).map(m => `   Day ${m.n} \u00b7 ${m.label} \u2014 ${m.reason}`).join("\n")
+                       + (money.missing > 8 ? `\n   \u2026and ${money.missing - 8} more` : "") : "")
+    : "";
+  // The same in-page tooltip the calendar cells use, NOT title=. A native title waits about
+  // a second, cannot be styled, and never fires on a phone at all -- so the bad-stops
+  // breakdown, the one thing here you actually need to read, was unreachable in practice
+  // (JP, 2026-08-21). data-tip shows instantly on hover and opens on tap.
+  const attr = t => t ? ` data-tip="${t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"` : "";
+  const stat = (v, label, title, cls) => `<div class="stat${title ? " has-detail" : ""}${cls ? " " + cls : ""}"${attr(title)}><b>${v}</b><span>${label}</span></div>`;
   el.innerHTML =
     stat(it.days.length, "days") +
     stat(countries.size, countries.size === 1 ? "country" : "countries") +
     stat(new Set(stops.filter(x => x.kind === "stay").map(x => x.name.toLowerCase())).size, "cities") +
     stat(mi(km), "miles", milesTitle) +
-    (bogus.length ? stat("\u26a0 " + bogus.length, bogus.length === 1 ? "bad stop" : "bad stops",
-       "Stops that look wrong \u2014 a flight routed a long way off course, or a name the "
-       + "gazetteer could not match exactly. Each one inflates the mileage above:\n"
-       + bogus.map(b => {
-           const at = b.at || {};
-           const landed = [at.display, (at.countryCode || "").toUpperCase()].filter(Boolean).join(", ");
-           return `${b.where} \u2192 landed on ${landed || "an unknown spot"} `
-                + `(${at.lat != null ? at.lat.toFixed(2) + ", " + at.lng.toFixed(2) : "?"})`
-                + (b.weak ? " \u2014 no exact match, check the spelling"
-                          : ` \u2014 +${Math.round(b.detour).toLocaleString()} mi off course`);
-         }).join("\n")
-       + "\n\nSee the full list on the Globe tab.") : "") +
-    stat((holes.length ? "\u26a0 " : "") + legs, legs === 1 ? "leg" : "legs", legsTitle) +
+    (issues.length ? stat("\u26a0 " + issues.length, issues.length === 1 ? "route issue" : "route issues",
+       "The route contradicts itself here, which is what inflates the mileage above. The "
+       + "cities themselves are fine \u2014 these are days to open and correct:\n\n"
+       + issues.slice(0, 8).map(b => "\u2022 " + b.text).join("\n")
+       + (issues.length > 8 ? `\n\u2026and ${issues.length - 8} more` : "")
+       + "\n\nSee the full list on the Globe tab.", "bad") : "") +
+    stat((holes.length ? "\u26a0 " : "") + legs, legs === 1 ? "leg" : "legs", legsTitle,
+         holes.length ? "bad" : "") +
     stat(hotelNights, hotelNights === 1 ? "hotel night" : "hotel nights") +
     stat(bnbNights, bnbNights === 1 ? "rental night" : "rental nights") +
     (redEyeNights ? stat(redEyeNights, redEyeNights === 1 ? "red-eye" : "red-eyes") : "") +
-    stat(acts, "activities");
+    stat(acts, acts === 1 ? "activity" : "activities") +
+    (it.days.length ? stat((money.missing ? "\u26a0 " : "") + cur(perDay), "cost/day", perDayTip,
+                           money.missing ? "bad" : "") : "");
 }
 
 async function renderCalendar() {
@@ -2850,12 +2878,71 @@ function detourMiles(prev, p, next) {
   return (haversineKm(prev, p) + haversineKm(p, next) - haversineKm(prev, next)) * 0.621371;
 }
 
-function badStops(points) {
+// A stop that geocoded to the wrong continent and a DAY whose label contradicts its own
+// flights look identical from the mileage: both bend the route, both inflate the total. They
+// have nothing else in common, and only the first is the gazetteer's fault. The old test
+// measured the bend and blamed the gazetteer for both -- so it sent JP off to verify Cairo
+// and Dubai (both correct, of course) instead of to day 16, which still says Cairo three
+// days after the flight that landed in Dubai. Detour size names the symptom; only the day
+// walk below names the cause (JP, 2026-08-21).
+function routeIssues(it, points) {
   const out = [];
-  points.forEach((p, i) => {
-    const detour = detourMiles(points[i - 1], p, points[i + 1]);
-    const strayedInTransit = p.kind !== "stay" && detour > 2000;
-    if (strayedInTransit || p.weak) out.push({ where: p.name, at: p, detour, weak: !!p.weak });
+  // A name with no exact match really is a coordinate problem: the pin is a guess.
+  points.forEach(p => {
+    if (p.weak) out.push({ kind: "place", at: p,
+      text: `"${p.name}" \u2014 no exact match, so its pin is a guess. Check the spelling.` });
+  });
+  const byName = new Map();
+  points.forEach(p => { const k = p.name.trim().toLowerCase(); if (!byName.has(k)) byName.set(k, p); });
+  const pt = n => byName.get((n || "").trim().toLowerCase());
+  const mi = (a, b) => (a && b) ? haversineKm(a, b) * 0.621371 : 0;
+  const near = d => Math.round(d).toLocaleString();
+  // Dubai to Abu Dhabi is 87 miles: an airport transfer, not a mistake. Anything past this
+  // is a flight nobody recorded.
+  const GAP = 100;
+  // Where the trip has actually left you, leg by leg. The transports are the record of what
+  // happened; a day label that disagrees with them is the thing that is wrong.
+  let here = null, hereDay = 0;
+  // One missing flight used to produce a dozen complaints: every later day disagreed with
+  // the same stale position, so a single gap between Phuket and Singapore was reported
+  // again for Hong Kong, Sanya, Guilin and the rest. Believing the day once it has been
+  // reported collapses that back to one line per real gap -- and one line per day, since a
+  // day whose legs and label BOTH disagree is still just one day to open (JP, 2026-08-21).
+  const said = new Set();
+  const add = (n, text) => { if (said.has(n)) return; said.add(n); out.push({ kind: "day", day: n, text }); };
+  it.days.forEach((day, i) => {
+    const n = i + 1;
+    const legs = dayTransports(day);
+    for (const t of legs) {
+      const from = pt(t.from), to = pt(t.to);
+      const gap = mi(here, from);
+      if (here && from && gap > GAP) {
+        add(n, `Day ${n} sets off from ${t.from}, but the last leg left you in ${here.name} `
+             + `(day ${hereDay}, ${near(gap)} mi away) \u2014 a leg between them is missing.`);
+      }
+      if (to) { here = to; hereDay = n; }
+    }
+    // A day may legitimately be labelled with the city it STARTED in -- day 11 reads
+    // "Moraira" and flies out of Valencia. Only a label matching NEITHER end is wrong.
+    const label = (day.location2 || day.location || "").trim();
+    const l = pt(label);
+    if (!l) return;
+    const ends = legs.length ? [legs[0].from, legs[legs.length - 1].to] : [];
+    if (ends.some(e => (e || "").trim().toLowerCase() === label.toLowerCase())) return;
+    const gap = mi(here, l);
+    if (here && gap > GAP) {
+      add(n, legs.length
+        ? `Day ${n} is labelled ${label}, but its own legs run ${legs[0].from} \u2192 `
+          + `${legs[legs.length - 1].to} \u2014 ${near(gap)} mi from where the day ends.`
+        : `Day ${n} is labelled ${label}, but no leg ever gets you there from ${here.name} `
+          + `(day ${hereDay}, ${near(gap)} mi away) \u2014 add the missing flight or fix the label.`);
+      // Reported once; from here on take the day at its word, so the next line is the NEXT
+      // gap rather than this same one restated. Only for a day with no legs of its own --
+      // where there ARE legs they are the stronger record of where the trip went, and
+      // overriding them with the label made the following day cite a city it never landed in.
+      if (!legs.length) { here = l; hereDay = n; }
+    }
+    if (!here) { here = l; hereDay = n; }
   });
   return out;
 }
@@ -2875,11 +2962,17 @@ function renderRouteCheck(resolved) {
     const detour = detourMiles(prev, p, next);
     return { p, no: p.kind === "stay" ? seen.get(key) : null, detour };
   });
-  const flagged = new Set(badStops(resolved).map(b => b.at));
-  const odd = rows.filter(r => flagged.has(r.p));
+  const issues = routeIssues(activeItin(), resolved);
+  const flagged = new Set(issues.filter(b => b.at).map(b => b.at));
   el.innerHTML = `<h4>Route check \u2014 ${stayNo} places, ${resolved.length} points`
-    + (odd.length ? ` \u00b7 <span class="odd">${odd.length} way off course</span>` : "")
-    + `</h4><ol>`
+    + (issues.length ? ` \u00b7 <span class="odd">${issues.length} issue${issues.length === 1 ? "" : "s"}</span>` : "")
+    + `</h4>`
+    // The cities are almost never the problem; the days that disagree with their own
+    // flights are. Say which, above the list, instead of leaving it to be inferred.
+    + (issues.length ? `<ul class="issues">`
+        + issues.map(b => `<li>${b.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</li>`).join("")
+        + `</ul>` : "")
+    + `<ol>`
     + rows.map(r => {
         const at = [r.p.display, (r.p.countryCode || "").toUpperCase()].filter(Boolean).join(", ");
         return `<li value="${r.no || ""}"${r.no ? "" : ' style="list-style:none;margin-left:-14px"'}>`
@@ -2887,7 +2980,7 @@ function renderRouteCheck(resolved) {
           + `<b>${r.p.name}</b> <span class="where">\u2192 ${at || "?"} `
           + `(${r.p.lat.toFixed(2)}, ${r.p.lng.toFixed(2)})</span>`
           + (r.p.weak ? ` <span class="odd">no exact match for "${r.p.name}" \u2014 check the spelling</span>` : "")
-          + (flagged.has(r.p) && r.detour > 1 ? ` <span class="odd">+${Math.round(r.detour).toLocaleString()} mi off course</span>` : "")
+          + (r.detour > 2000 ? ` <span class="muted">+${Math.round(r.detour).toLocaleString()} mi of doubling back</span>` : "")
           + `</li>`;
       }).join("")
     + `</ol>`;
