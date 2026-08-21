@@ -46,7 +46,8 @@
             "reference": "",
             "info": ""
           },
-          "transports": []
+          "transports": [],
+          "food": 0
         },
         {
           "id": "2l0pr3pk",
@@ -54,7 +55,7 @@
           "location": "Barcelona",
           "hotel": null,
           "flight": null,
-          "food": 180
+          "food": 50
         },
         {
           "id": "sgazzqf2",
@@ -79,7 +80,8 @@
               "reference": "",
               "info": ""
             }
-          ]
+          ],
+          "food": 50
         },
         {
           "id": "9c5l82jw",
@@ -122,7 +124,8 @@
               "reference": "",
               "info": ""
             }
-          ]
+          ],
+          "food": 50
         },
         {
           "id": "ofx0zs26",
@@ -145,7 +148,8 @@
             "reference": "",
             "info": ""
           },
-          "flight": null
+          "flight": null,
+          "food": 50
         },
         {
           "id": "9dve402q",
@@ -168,7 +172,8 @@
             "reference": "",
             "info": ""
           },
-          "flight": null
+          "flight": null,
+          "food": 50
         },
         {
           "id": "m3bbqxo2",
@@ -191,7 +196,8 @@
             "reference": "",
             "info": ""
           },
-          "flight": null
+          "flight": null,
+          "food": 50
         },
         {
           "id": "0wvbkkj1",
@@ -214,7 +220,8 @@
             "reference": "",
             "info": ""
           },
-          "flight": null
+          "flight": null,
+          "food": 50
         },
         {
           "id": "cokfylj8",
@@ -237,7 +244,8 @@
             "reference": "",
             "info": ""
           },
-          "flight": null
+          "flight": null,
+          "food": 50
         },
         {
           "id": "ybjiovw2",
@@ -260,7 +268,8 @@
             "reference": "",
             "info": ""
           },
-          "flight": null
+          "flight": null,
+          "food": 50
         },
         {
           "id": "njt9fuxv",
@@ -305,7 +314,8 @@
               "reference": "",
               "info": ""
             }
-          ]
+          ],
+          "food": 50
         },
         {
           "id": "zrc890ta",
@@ -313,7 +323,8 @@
           "location": "Rome",
           "hotel": null,
           "flight": null,
-          "location2": ""
+          "location2": "",
+          "food": 100
         },
         {
           "id": "hwa89xmy",
@@ -343,7 +354,8 @@
               "operator": "Egypt AIr"
             }
           ],
-          "location2": "Cairo"
+          "location2": "Cairo",
+          "food": 100
         },
         {
           "id": "yh7dw8xd",
@@ -358,7 +370,8 @@
             "checkIn": "2026-10-16",
             "checkOut": "2026-10-18"
           },
-          "flight": null
+          "flight": null,
+          "food": 100
         },
         {
           "id": "b227akzb",
@@ -402,7 +415,8 @@
               "reference": "",
               "info": ""
             }
-          ]
+          ],
+          "food": 100
         },
         {
           "id": "44bc1vx7",
@@ -427,7 +441,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "c2x4mh6o",
@@ -453,7 +468,8 @@
           "flight": null,
           "activities": [],
           "transports": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "pvw6fuwx",
@@ -479,7 +495,8 @@
           "flight": null,
           "transports": [],
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "k838ni07",
@@ -523,7 +540,8 @@
               "info": ""
             }
           ],
-          "activities": []
+          "activities": [],
+          "food": 125
         },
         {
           "id": "w2p2qzdv",
@@ -546,7 +564,8 @@
             "info": ""
           },
           "flight": null,
-          "activities": []
+          "activities": [],
+          "food": 100
         },
         {
           "id": "ynd2gz5u",
@@ -569,7 +588,8 @@
             "info": ""
           },
           "flight": null,
-          "activities": []
+          "activities": [],
+          "food": 100
         },
         {
           "id": "0jytgly1",
@@ -592,7 +612,8 @@
             "info": ""
           },
           "flight": null,
-          "activities": []
+          "activities": [],
+          "food": 100
         },
         {
           "id": "mqyu613m",
@@ -615,7 +636,8 @@
             "info": ""
           },
           "flight": null,
-          "activities": []
+          "activities": [],
+          "food": 100
         },
         {
           "id": "sf56dsx3",
@@ -638,7 +660,8 @@
             "info": ""
           },
           "flight": null,
-          "activities": []
+          "activities": [],
+          "food": 100
         },
         {
           "id": "xqjmg2cu",
@@ -662,7 +685,8 @@
             "info": ""
           },
           "flight": null,
-          "activities": []
+          "activities": [],
+          "food": 100
         },
         {
           "id": "c0x1o78q",
@@ -687,7 +711,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 200
         },
         {
           "id": "clto2a95",
@@ -712,7 +737,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 200
         },
         {
           "id": "c3c9lke9",
@@ -737,7 +763,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "i8bo1t3g",
@@ -762,7 +789,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "wyrrs7gd",
@@ -787,7 +815,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 100
         },
         {
           "id": "apacyygw",
@@ -812,7 +841,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 100
         },
         {
           "id": "bbntr38p",
@@ -837,7 +867,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 100
         },
         {
           "id": "hq3fcrli",
@@ -862,7 +893,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 100
         },
         {
           "id": "ge7z3tq7",
@@ -907,7 +939,8 @@
               "reference": "",
               "info": ""
             }
-          ]
+          ],
+          "food": 100
         },
         {
           "id": "ug4en6fj",
@@ -932,7 +965,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 100
         },
         {
           "id": "bwu5kuex",
@@ -957,7 +991,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "sdhpa8rg",
@@ -1002,7 +1037,8 @@
               "reference": "",
               "info": ""
             }
-          ]
+          ],
+          "food": 125
         },
         {
           "id": "8x7xr78e",
@@ -1027,7 +1063,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "9187i9pw",
@@ -1072,7 +1109,8 @@
               "reference": "",
               "info": ""
             }
-          ]
+          ],
+          "food": 125
         },
         {
           "id": "epsrl8tu",
@@ -1097,7 +1135,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 100
         },
         {
           "id": "ufemsl1v",
@@ -1142,12 +1181,13 @@
               "reference": "",
               "info": ""
             }
-          ]
+          ],
+          "food": 100
         },
         {
           "id": "j6q1zlmv",
           "date": "2026-11-14",
-          "location": "Guilin",
+          "location": "Shanghai",
           "hotel": {
             "name": "Renaissance Shanghai Yu Garden Hotel",
             "redEye": false,
@@ -1168,31 +1208,13 @@
           "flight": null,
           "activities": [],
           "location2": "",
-          "transports": [
-            {
-              "id": "s4xoeey1",
-              "type": "flight",
-              "from": "Guilin",
-              "to": "Shanghai",
-              "departTime": "10:00",
-              "arriveTime": "12:05",
-              "overnight": false,
-              "price": 350,
-              "currency": "CAD",
-              "operator": "Air China",
-              "business": true,
-              "businessPct": 50,
-              "booked": false,
-              "confirmation": "",
-              "reference": "",
-              "info": ""
-            }
-          ]
+          "transports": [],
+          "food": 100
         },
         {
           "id": "pk5iqhaa",
           "date": "2026-11-15",
-          "location": "Guilin",
+          "location": "Shanghai",
           "hotel": {
             "name": "Renaissance Shanghai Yu Garden Hotel",
             "redEye": false,
@@ -1212,12 +1234,13 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "n4fawu5b",
           "date": "2026-11-16",
-          "location": "Guilin",
+          "location": "Shanghai",
           "hotel": {
             "name": "Renaissance Shanghai Yu Garden Hotel",
             "redEye": false,
@@ -1237,7 +1260,9 @@
           },
           "flight": null,
           "transports": [],
-          "activities": []
+          "activities": [],
+          "location2": "",
+          "food": 125
         },
         {
           "id": "mkcnnnui",
@@ -1282,12 +1307,13 @@
               "reference": "",
               "info": "Business Class"
             }
-          ]
+          ],
+          "food": 150
         },
         {
           "id": "jw41yrbn",
           "date": "2026-11-18",
-          "location": "Shanghai",
+          "location": "Taipei",
           "hotel": {
             "name": "W Taipei",
             "redEye": false,
@@ -1307,7 +1333,8 @@
           },
           "flight": null,
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "5gq6seqd",
@@ -1333,7 +1360,8 @@
           "flight": null,
           "transports": [],
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "hodqvj7u",
@@ -1359,7 +1387,8 @@
           "flight": null,
           "transports": [],
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 125
         },
         {
           "id": "dbjuc473",
@@ -1403,7 +1432,8 @@
               "info": "TSA–GMP"
             }
           ],
-          "activities": []
+          "activities": [],
+          "food": 125
         },
         {
           "id": "s3tgpvdb",
@@ -1429,7 +1459,8 @@
           "flight": null,
           "transports": [],
           "activities": [],
-          "location2": ""
+          "location2": "",
+          "food": 150
         },
         {
           "id": "u5bsp686",
@@ -1469,7 +1500,8 @@
               "businessPct": 100
             }
           ],
-          "location2": ""
+          "location2": "",
+          "food": 150
         },
         {
           "id": "6jx1ojvk",
@@ -1478,7 +1510,8 @@
           "hotel": null,
           "flight": null,
           "transports": [],
-          "activities": []
+          "activities": [],
+          "food": 0
         }
       ],
       "pax": 4
@@ -1486,5 +1519,5 @@
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-08-21T15:00:07.324Z"
+  "publishedAt": "2026-08-21T15:20:03.877Z"
 }
