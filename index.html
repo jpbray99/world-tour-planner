@@ -36,6 +36,9 @@
   header .totals { margin-left: auto; font-size: 12px; color: var(--ink-dim); text-align: right; }
   /* Once published, the phone link stays on screen -- a URL you have to ask for again is a
      URL you will not open. */
+  #slotError:empty { display: none; }
+  #slotError { margin-top: 10px; color: var(--bad); font-size: 12px; font-weight: 600; }
+  .needed { border-color: var(--bad) !important; }
   #publishedUrl:empty, #publishState:empty { display: none; }
   #publishState { font-size: 11px; white-space: nowrap; }
   #publishState.err { color: var(--bad); }
@@ -443,6 +446,7 @@
 <dialog id="slotDialog">
   <h3 id="slotTitle">Edit</h3>
   <div id="slotBody"></div>
+  <div id="slotError" class="muted"></div>
   <div class="foot">
     <button class="btn danger" id="slotClear">Delete</button>
     <button class="btn" id="slotCancel">Cancel</button>
@@ -775,8 +779,8 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       <select id="t_type">${Object.entries(TRANSPORT_META).map(([k, m]) =>
         `<option value="${k}" ${(t.type || presetType || "flight") === k ? "selected" : ""}>${m.icon} ${m.label}</option>`).join("")}</select>
       <div class="row">
-        <div style="flex:1"><label class="muted">From</label><input id="t_from" value="${inferredFrom}" placeholder="Montreal" /></div>
-        <div style="flex:1"><label class="muted">To (sets next day's location)</label><input id="t_to" value="${inferredTo}" placeholder="Barcelona" /></div>
+        <div style="flex:1"><label class="muted">From <span style="color:var(--bad)">*</span></label><input id="t_from" required value="${inferredFrom}" placeholder="Montreal" /></div>
+        <div style="flex:1"><label class="muted">To <span style="color:var(--bad)">*</span> (sets next day's location)</label><input id="t_to" required value="${inferredTo}" placeholder="Barcelona" /></div>
       </div>
       <div class="row">
         <div style="flex:1"><label class="muted">Depart (local to From)</label><input id="t_depart" type="time" value="${t.departTime || presetTime || ""}" /></div>
@@ -942,10 +946,10 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       <select id="f_pick"><option value="">— manual entry —</option>${options.map(o=>`<option value="${o.id}" ${f.optionId===o.id?"selected":""}>${o.from} → ${o.to}: ${o.airline||"?"} — ${money(o.price, o.currency)}</option>`).join("")}</select>
       <label class="muted">Or manual: airline / price / currency</label>
       <div class="row"><input id="f_air" placeholder="airline" value="${f.airline||""}" style="flex:1"/><input id="f_price" type="number" placeholder="price" value="${f.price||""}" style="width:90px"/><select id="f_cur">${["USD","CAD","EUR","GBP","AUD","JPY"].map(c=>`<option ${f.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
-      <label class="muted" style="margin-top:10px">From city (departure timezone)</label>
-      <input id="f_from" value="${f.from || inferredFrom}" placeholder="e.g. Barcelona" />
-      <label class="muted">To city (arrival timezone — sets NEXT day's location too)</label>
-      <input id="f_to" value="${f.to || inferredTo}" placeholder="e.g. Rome" />
+      <label class="muted" style="margin-top:10px">From city <span style="color:var(--bad)">*</span> (departure timezone)</label>
+      <input id="f_from" required value="${f.from || inferredFrom}" placeholder="e.g. Barcelona" />
+      <label class="muted">To city <span style="color:var(--bad)">*</span> (arrival timezone — sets NEXT day's location too)</label>
+      <input id="f_to" required value="${f.to || inferredTo}" placeholder="e.g. Rome" />
       <div class="row">
         <div style="flex:1"><label class="muted">Depart (local to From)</label><input id="f_depart" type="time" value="${f.departTime || ""}" /></div>
         <div style="flex:1"><label class="muted">Arrive (local to To)</label><input id="f_arrive" type="time" value="${f.arriveTime || ""}" /></div>
@@ -957,6 +961,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       </div>`;
   }
   dlg.dataset.dayId = dayId; dlg.dataset.kind = kind;
+  document.getElementById("slotError").textContent = "";
   dlg.showModal();
 }
 function allOptionsFlat() {
@@ -966,6 +971,26 @@ function allOptionsFlat() {
     state.routeOptions[key].forEach(o => out.push({ ...o, from, to }));
   }
   return out;
+}
+
+// A leg with no destination is not a half-finished leg, it is a hole in the route: the map
+// draws nothing, the mileage silently omits it, and nothing anywhere says so. Day 32 flew
+// out of Sanya to "" for weeks. Both ends are required on EVERY kind of transport -- a train
+// or a drive leaves a hole exactly the same way a flight does (JP, 2026-08-20).
+// Deleting still works: the Delete button, or clearing the whole slot.
+function requireEnds(prefix) {
+  const err = document.getElementById("slotError");
+  const fromEl = document.getElementById(prefix + "_from");
+  const toEl = document.getElementById(prefix + "_to");
+  [fromEl, toEl].forEach(el => el && el.classList.remove("needed"));
+  const missing = [fromEl, toEl].filter(el => el && !el.value.trim());
+  if (!missing.length) { err.textContent = ""; return true; }
+  missing.forEach(el => el.classList.add("needed"));
+  err.textContent = missing.length === 2
+    ? "This leg needs a From and a To — without both it is a gap in the route."
+    : `This leg needs a ${missing[0] === fromEl ? "From" : "To"}.`;
+  missing[0].focus();
+  return false;
 }
 
 document.getElementById("slotSave").addEventListener("click", async () => {
@@ -993,7 +1018,9 @@ document.getElementById("slotSave").addEventListener("click", async () => {
     };
     if (isNaN(rec.price)) rec.price = null;
     if (!rec.from && !rec.to && !rec.departTime) {
-      day.transports = day.transports.filter(x => x.id !== id); // blank = delete
+      day.transports = day.transports.filter(x => x.id !== id); // wholly blank = delete
+    } else if (!requireEnds("t")) {
+      return;                                   // keep the dialog open on the empty field
     } else if (id && id !== "legacy") {
       const i = day.transports.findIndex(x => x.id === id);
       if (i >= 0) day.transports[i] = rec; else day.transports.push(rec);
@@ -1096,6 +1123,9 @@ document.getElementById("slotSave").addEventListener("click", async () => {
     const departTime = document.getElementById("f_depart").value;
     const arriveTime = document.getElementById("f_arrive").value;
     const overnight = document.getElementById("f_overnight").checked;
+    const price0 = parseFloat(document.getElementById("f_price").value);
+    // Same rule as a transport, unless the whole slot is being emptied out.
+    if ((pick || price0) && !requireEnds("f")) return;
     if (pick) {
       const opt = allOptionsFlat().find(o => o.id === pick);
       day.flight = { optionId: opt.id, airline: opt.airline, price: opt.price, currency: opt.currency, from: from || opt.from, to: to || opt.to, departTime, arriveTime, overnight };
@@ -1587,10 +1617,18 @@ async function renderTripStats() {
   // "Legs" counts EVERY transport, not just flights -- a drive and a train are legs too,
   // which is why the figure reads higher than a count of flights. The tooltip spells out
   // exactly which ones are in there (JP, 2026-08-20).
-  const allLegs = it.days.flatMap(d => dayTransports(d));
+  const allLegs = it.days.flatMap((d, i) => dayTransports(d).map(t => ({ ...t, _day: i + 1 })));
   const legs = allLegs.length;
+  // A leg missing an end is a hole in the route: it draws nothing and quietly drops out of
+  // the mileage. Both ends are required on new legs now, so this names the ones already
+  // saved that way rather than leaving JP to find them by eye (JP, 2026-08-20).
+  const holes = allLegs.filter(t => !(t.from || "").trim() || !(t.to || "").trim());
   const legsTitle = allLegs.length
-    ? allLegs.map(t => `${(TRANSPORT_META[t.type] || TRANSPORT_META.flight).label}: ${t.from || "?"} \u2192 ${t.to || "?"}`).join("\n")
+    ? (holes.length ? `\u26a0 ${holes.length} leg${holes.length === 1 ? " is" : "s are"} missing an end `
+                    + `\u2014 open the day and fill it in:\n`
+                    + holes.map(t => `   Day ${t._day}: ${t.from || "(nowhere)"} \u2192 ${t.to || "(nowhere)"}`).join("\n")
+                    + "\n\n" : "")
+      + allLegs.map(t => `Day ${t._day} \u00b7 ${(TRANSPORT_META[t.type] || TRANSPORT_META.flight).label}: ${t.from || "?"} \u2192 ${t.to || "?"}`).join("\n")
     : "";
   const isAirbnb = h => !!h && (/muscache|airbnb/i.test(h.photoUrl || "") || /airbnb|villa|apartment|apt\b/i.test(h.name || ""));
   const redEyeNights = it.days.filter(d => d.hotel && d.hotel.redEye).length;
@@ -1619,7 +1657,7 @@ async function renderTripStats() {
                           : ` \u2014 +${Math.round(b.detour).toLocaleString()} mi off course`);
          }).join("\n")
        + "\n\nSee the full list on the Globe tab.") : "") +
-    stat(legs, legs === 1 ? "leg" : "legs", legsTitle) +
+    stat((holes.length ? "\u26a0 " : "") + legs, legs === 1 ? "leg" : "legs", legsTitle) +
     stat(hotelNights, hotelNights === 1 ? "hotel night" : "hotel nights") +
     stat(bnbNights, bnbNights === 1 ? "rental night" : "rental nights") +
     (redEyeNights ? stat(redEyeNights, redEyeNights === 1 ? "red-eye" : "red-eyes") : "") +
