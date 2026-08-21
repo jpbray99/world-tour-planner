@@ -2817,8 +2817,25 @@ function orderedStops(it) {
   // location); "via" is a point only touched in transit (an airport code, a connection
   // city). Only stays get a number on the globe, so pin 4 means "the 4th place you stay",
   // not "the 4th coordinate the route line bends at" (JP, 2026-08-20).
+  // A city you arrive in and do not leave until a LATER day is a place you SLEPT, not a
+  // point you passed through, so it earns a numbered pin even when no day is labelled with
+  // it. Guangzhou arrived by train on day 37 and left on day 39 -- two nights -- and still
+  // drew as a nameless bend in the line, because "stay" was decided purely by day.location
+  // (JP, 2026-08-21). Valencia Airport is the counter-case and stays a via: the flight out
+  // leaves the same day, so nobody slept there.
+  const allLegs = [];
+  it.days.forEach((d, i) => dayTransports(d).forEach(t => allLegs.push({ t, day: i })));
+  const dwelt = new Set();
+  allLegs.forEach((L, i) => {
+    const to = (L.t.to || "").trim().toLowerCase();
+    if (!to) return;
+    const next = allLegs[i + 1];
+    if (!next || next.day > L.day) dwelt.add(to);
+  });
   const stops = [];
-  const push = (name, kind) => {
+  const push = (rawName, rawKind) => {
+    const name = rawName, kind = (rawKind === "via" && dwelt.has((rawName || "").trim().toLowerCase()))
+      ? "stay" : rawKind;
     const n = (name || "").trim();
     if (!n) return;
     const last = stops[stops.length - 1];
@@ -2910,6 +2927,11 @@ function routeIssues(it, points) {
   // there on screen (JP, 2026-08-21). Nothing here may claim a leg does not exist.
   let here = null, hereDay = 0;
   let prevLeg = null;     // to catch the same leg saved twice
+  // Cities the trip has recorded LEAVING. Shenzhen to Guangzhou is 55 miles, under the
+  // transfer threshold below, so a day still reading "Shenzhen" the day after that train
+  // slipped through -- and then drew the route back to Shenzhen and out again. Distance is
+  // the wrong test once a leg says you left: having departed is the test.
+  const departed = new Set();
   const said = new Set();
   const add = (n, text) => { if (said.has(n)) return; said.add(n); out.push({ kind: "day", day: n, text }); };
   // A stale label usually runs for several days in a row -- five days still reading "Cairo"
@@ -2937,6 +2959,7 @@ function routeIssues(it, points) {
           add(n, `Day ${n} sets off from ${t.from}, but the last leg left you in ${here.name} `
                + `(day ${hereDay}, ${near(gap)} mi away) \u2014 a leg between them is missing.`);
         }
+        if (t.from) departed.add(t.from.trim().toLowerCase());
         if (to) { here = to; hereDay = n; }
         prevLeg = { key, day: n };
       }
@@ -2953,7 +2976,8 @@ function routeIssues(it, points) {
     if (!l) { run = null; return; }
     if (!here) { here = l; hereDay = n; run = null; return; }   // seed from the first day
     const gap = mi(here, l);
-    if (gap <= GAP) { run = null; return; }                     // agrees with the legs: fine
+    const stale = departed.has(label.toLowerCase()) && here.name.trim().toLowerCase() !== label.toLowerCase();
+    if (gap <= GAP && !stale) { run = null; return; }           // agrees with the legs: fine
     if (run && run.key === label.toLowerCase() && run.last === n - 1) { run.last = n; run.write(); return; }
     const issue = { kind: "day", day: n, text: "" };
     const at = here, atDay = hereDay, miles = near(gap);
@@ -3192,9 +3216,12 @@ async function drawRoute(resolved) {
       id: "route", type: "line", source: "route",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-width": ["case", ["get", "ground"], 3, 2],
-        // solid amber for roads, dashed white for flights -- the mode is readable at a glance
-        "line-color": ["case", ["get", "ground"], "#f0b35c", "#ffffff"],
+        // Trains and drives read as the SPINE of the route, so they are the heavier line
+        // (JP, 2026-08-21). Amber lost them against the globe's land; white holds against
+        // both land and ocean. Both modes are white now, and the dash still tells them
+        // apart: ground legs solid, flights dashed.
+        "line-width": ["case", ["get", "ground"], 4.5, 2],
+        "line-color": "#ffffff",
         "line-opacity": 0.95,
         "line-dasharray": ["case", ["get", "ground"], ["literal", [1, 0]], ["literal", [2, 1.5]]],
       },
