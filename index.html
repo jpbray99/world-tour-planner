@@ -33,7 +33,12 @@
   nav button { border: none; background: transparent; padding: 7px 12px; border-radius: 6px;
     font-size: 12.5px; font-weight: 600; color: var(--ink-dim); cursor: pointer; }
   nav button.active { background: var(--accent-dim); color: var(--accent); }
-  header .totals { margin-left: auto; font-size: 12px; color: var(--ink-dim); text-align: right; }
+  /* The trip total used to live here AND in the stats band, which is two places to read
+     one number -- and the header copy is hidden on a phone, so it was the copy that could
+     not be relied on. It is now only in the band, with its breakdown on hover, so the
+     header keeps just the publish state (JP, 2026-08-21). `nav` takes over pushing the
+     rest right, because the element that used to do it is gone. */
+  nav { margin-right: auto; }
   /* Once published, the phone link stays on screen -- a URL you have to ask for again is a
      URL you will not open. */
   #settingsBtnTop { display: none; cursor: pointer; font-size: 17px; margin-left: 8px; opacity: .65; }
@@ -46,7 +51,6 @@
   #publishState.err { color: var(--bad); }
   #publishedUrl { font-size: 11px; max-width: 190px; line-height: 1.35; }
   #publishedUrl a { color: var(--accent); word-break: break-all; }
-  header .totals b { color: var(--ink); font-size: 14px; }
 
   #content { flex: 1; overflow: auto; padding: 20px; min-height: 0; }
   #view-calendar.active { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -278,7 +282,6 @@
     header { flex-wrap: wrap; gap: 10px; padding: 10px 12px; }
     header h1 { font-size: 14px; }
     nav { order: 3; width: 100%; overflow-x: auto; }
-    header .totals { font-size: 11px; }
     /* min-height on a flex item defaults to AUTO, which means "never shrink below your
        content". #main inherited that, so the column grew to its content and pushed the
        document past the viewport no matter what body said -- which is the scroller that
@@ -308,7 +311,6 @@
     #chat { display: none; }
     #settingsBtnTop { display: inline; margin-left: auto; }
     header h1 { display: none; }
-    header .totals { display: none; }
     /* Stats stay on ONE line and scroll sideways. Wrapping turned eight of them into a
        four-row block that pushed the calendar off the screen. */
     /* The band is one scrolling line, so it only needs the height of its tallest control. */
@@ -339,10 +341,6 @@
       <button data-view="compare">Compare Itineraries</button>
       <button data-view="globe">Globe</button>
     </nav>
-    <div class="totals">
-      Home currency total<br/><b id="grandTotal">—</b>
-      <div id="totalSplit" style="font-size:10px;color:var(--ink-dim);visibility:hidden"></div>
-    </div>
     <!-- No button: every change reaches the phone by itself, so pressing something could
          only ever repeat what already happened. What is left is the status and the link,
          which are the two things worth looking at (JP, 2026-08-20). -->
@@ -2182,12 +2180,13 @@ async function itinTotal(it) {
 }
 async function updateGrandTotal() {
   const { total, missing, missingItems, vehicleLegs, business, personal, by, counts, pax } = await itinTotal(activeItin());
-  const el = document.getElementById("grandTotal");
+  // One place only: the stats band. The header carried a second copy that a phone hid,
+  // so the figure JP could always see was the one WITHOUT the breakdown behind it.
+  const el = document.getElementById("totalStat");
   const fmt = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency });
-  el.textContent = (missing ? "\u26a0 " : "") + fmt(total);
-  // Also in the stats band, because the header copy is hidden on a phone.
   const inline = document.getElementById("grandTotalInline");
   if (inline) inline.textContent = (missing ? "\u26a0 " : "") + fmt(total);
+  if (!el) return;
   const pct = total > 0 ? Math.round((business / total) * 100) : 0;
   // Show the WORKING, not just the answer: every line says what it counted and whether
   // party size multiplied it, so the headline figure can be checked at a glance.
@@ -2212,18 +2211,11 @@ async function updateGrandTotal() {
     if (missing > SHOWN) lines.push(`   \u2026and ${missing - SHOWN} more`);
   }
   el.dataset.tip = lines.join("\n");
-  el.removeAttribute("title");
-  // Hover-only (JP, 2026-08-20): visibility (not display) so the row keeps its height
-  // and the header doesn't jump as the pointer moves in and out.
-  const sub = document.getElementById("totalSplit");
-  if (sub) {
-    sub.textContent = business > 0 ? `${fmt(business)} business \u00b7 ${fmt(personal)} personal` : "";
-    const show = () => { sub.style.visibility = business > 0 ? "visible" : "hidden"; };
-    const hide = () => { sub.style.visibility = "hidden"; };
-    el.onmouseenter = show; el.onmouseleave = hide;
-    sub.onmouseenter = show; sub.onmouseleave = hide;
-    hide();
-  }
+  // The dotted underline is the only thing that says a breakdown exists at all. The
+  // business/personal split used to be a separate hover-reveal line under the header
+  // figure; it is one of these lines now, so there is a single thing to hover and a single
+  // place the answer appears (JP, 2026-08-21).
+  el.classList.add("has-detail");
 }
 
 // ---------- Live search (SerpApi via the Mac bridge) ----------
