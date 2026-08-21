@@ -90,6 +90,12 @@
   #routeCheck .where { color: var(--ink-dim); }
   #routeCheck .odd { background: var(--bad-dim); color: var(--bad); font-weight: 600;
     border-radius: 4px; padding: 0 4px; }
+  #statsBar { display: flex; align-items: center; flex-wrap: nowrap; gap: 10px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #statsBar::-webkit-scrollbar { display: none; }
+  #statsBar > .row { flex: 0 0 auto; flex-wrap: nowrap; }
+  #tripControls { margin-left: auto; gap: 8px; }
+  #totalStat b { color: var(--accent); }
   .stat b { font-size: 15px; line-height: 1.1; }
   .stat span { font-size: 9.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .04em; }
   .sun-line { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; z-index: 1; }
@@ -136,8 +142,12 @@
   /* Timeline (vertical 24h) mode */
   #calGrid.timeline .day-col, #calGrid.timeline .add-day { width: 130px; }
   #calGrid.timeline .hour-ruler { width: 46px; flex-shrink: 0; background: var(--panel);
-    position: sticky; left: 0; z-index: 8; box-shadow: 1px 0 0 var(--border); }
-  .day-head { position: sticky; top: 0; z-index: 6; background: var(--panel); }
+    position: sticky; left: 0; z-index: 1100; box-shadow: 1px 0 0 var(--border); }
+  /* Hotel cards carry an inline z-index in the 500s so each can overhang the next column.
+     The frozen bands were left on single digits, so every villa card painted straight over
+     the day headers and the hour ruler -- unmissable on a phone (JP, 2026-08-20). The
+     frozen furniture has to outrank the content that scrolls under it. */
+  .day-head { position: sticky; top: 0; z-index: 1000; background: var(--panel); }
   .hour-ruler .day-head { z-index: 9; }          /* the corner sits above both frozen bands */
   .hotel-strip { position: sticky; top: var(--day-head-h); z-index: 5;
     background: var(--panel); overflow: visible; }
@@ -259,10 +269,12 @@
     header .totals { display: none; }
     /* Stats stay on ONE line and scroll sideways. Wrapping turned eight of them into a
        four-row block that pushed the calendar off the screen. */
-    #tripStats { flex-wrap: nowrap; overflow-x: auto; width: 100%;
-      -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-    #tripStats::-webkit-scrollbar { display: none; }
-    #tripStats .stat { flex: 0 0 auto; }
+    /* The band is one scrolling line, so it only needs the height of its tallest control. */
+    #statsBar { padding: 8px 10px; gap: 8px; }
+    #tripStats .stat, #tripControls > * { flex: 0 0 auto; }
+    /* Nothing is pushed to the far edge on a phone -- it just runs on and scrolls. */
+    #tripControls { margin-left: 0; }
+    #paxInput { width: 44px; }
     dialog { width: calc(100vw - 24px); max-height: 88vh; overflow-y: auto; }
     /* Comfortable tap targets -- 16px input font also stops iOS zooming on focus. */
     input, select, textarea { font-size: 16px; padding: 8px 10px; }
@@ -289,18 +301,21 @@
       Home currency total<br/><b id="grandTotal">—</b>
       <div id="totalSplit" style="font-size:10px;color:var(--ink-dim);visibility:hidden"></div>
     </div>
-    <!-- Getting the trip onto a phone is a top-level thing you DO, not a preference. It sat
-         inside the assistant panel's gear dialog, where it may as well not have existed. -->
-    <button class="btn primary" id="publishBtn" type="button" title="Push this trip to your phone now">Publish to my phone</button>
+    <!-- No button: every change reaches the phone by itself, so pressing something could
+         only ever repeat what already happened. What is left is the status and the link,
+         which are the two things worth looking at (JP, 2026-08-20). -->
     <div id="publishState" class="muted"></div>
     <div id="publishedUrl" class="muted"></div>
   </header>
 
   <div id="content">
     <div class="view active" id="view-calendar">
-      <div class="card row" style="justify-content:space-between">
+      <!-- Stats, travellers, currency and the trip total are ONE band that scrolls sideways.
+           Split across two justified groups they wrapped into a block that ate the calendar
+           on a phone, and the total was only in the header, which mobile hides. -->
+      <div class="card" id="statsBar">
         <div class="row" id="tripStats"></div>
-        <div class="row">
+        <div class="row" id="tripControls">
           <label class="muted">Travelers</label>
           <input id="paxInput" type="number" min="1" step="1" style="width:52px" title="Ticket prices are per person and get multiplied by this in the budget total; hotel prices are per room and don't." />
           <label class="muted">Home currency</label>
@@ -308,6 +323,7 @@
             <option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option>
             <option>AUD</option><option>JPY</option><option>CHF</option>
           </select>
+          <div class="stat" id="totalStat"><b id="grandTotalInline">\u2014</b><span>trip total</span></div>
         </div>
       </div>
       <div id="publishedBar" class="card row" style="display:none;gap:10px;align-items:center"></div>
@@ -1257,7 +1273,38 @@ function dayTransports(day) {
                    && (t.type || "flight") === (day.flight.type || "flight");
   if (day.flight) list.push({ ...day.flight, id: day.flight.id || "legacy", type: day.flight.type || "flight", _legacy: true });
   (day.transports || []).forEach(t => { if (!dup(t)) list.push(t); });
-  return list;
+  // Insertion order is not travel order: day 11 holds a 15:25 flight to Rome and an 11:30
+  // drive to the airport, stored in that order, so the route reached the airport AFTER
+  // landing in Rome.
+  //
+  // Chain the legs by where they CONNECT, and only fall back to the clock. Sorting by
+  // departure time alone is wrong the moment a day crosses the date line: Seoul -> Vancouver
+  // leaves at 18:55 and Vancouver -> Montreal at 14:00, so the clock puts the second flight
+  // first and the route flew home, went back to Seoul, and flew home again -- 9,000 phantom
+  // miles from a sort (JP, 2026-08-20). Connectivity has no timezone.
+  const norm = x => (x || "").trim().toLowerCase();
+  if (list.length > 1) {
+    const tos = new Set(list.map(t => norm(t.to)));
+    const starts = list.filter(t => !tos.has(norm(t.from)));
+    if (starts.length === 1) {
+      const rest = list.slice(), chain = [];
+      let cur = starts[0];
+      while (cur) {
+        chain.push(cur);
+        rest.splice(rest.indexOf(cur), 1);
+        cur = rest.find(t => norm(t.from) === norm(chain[chain.length - 1].to));
+      }
+      if (chain.length === list.length) return chain;   // one unbroken run through the day
+    }
+  }
+  // No single chain (day 11 drives to "Valencia Airport" and flies from "Valencia"): fall
+  // back to the clock, and keep an untimed leg in place rather than letting it jump ahead.
+  const depAt = t => /^\d{1,2}:\d{2}$/.test(t.departTime || "") ? t.departTime.padStart(5, "0") : null;
+  return list
+    .map((t, i) => ({ t, i, at: depAt(t) }))
+    .sort((a, b) => (a.at === null) - (b.at === null)
+                 || (a.at !== null && a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.i - b.i))
+    .map(x => x.t);
 }
 
 const CURRENCY_SYMBOL = { USD: "$", CAD: "$", EUR: "\u20ac", GBP: "\u00a3", AUD: "$", JPY: "\u00a5", CHF: "CHF " };
@@ -1531,15 +1578,7 @@ async function renderTripStats() {
   // you do not cross an ocean and return before carrying on. That PATTERN is what names the
   // culprit; the size of the grand total never does, because a wrong total still looks like
   // a plausible number for a world tour (JP, 2026-08-20).
-  const bogus = [];
-  for (let i = 0; i + 1 < hops.length; i++) {
-    if (miNum(hops[i].d) < 500) continue;
-    if (miNum(haversineKm(coords[i], coords[i + 2])) > 25) continue;   // not a reversal
-    bogus.push({ where: hops[i].to, at: coords[i + 1], waste: hops[i].d + hops[i + 1].d });
-  }
-  // ...and a single hop longer than any flight that exists catches a bad stop with no
-  // return leg after it, which the reversal test cannot see.
-  hops.forEach((h, i) => { if (miNum(h.d) > 9500) bogus.push({ where: h.to, at: coords[i + 1], waste: h.d }); });
+  const bogus = badStops(coords);   // same test the Route check list uses, so they agree
 
   const milesTitle = hops.filter(h => h.d >= 1).length
     ? "Longest hops:\n" + hops.filter(h => h.d >= 1).sort((a, b) => b.d - a.d).slice(0, 8)
@@ -1569,16 +1608,17 @@ async function renderTripStats() {
     stat(new Set(stops.filter(x => x.kind === "stay").map(x => x.name.toLowerCase())).size, "cities") +
     stat(mi(km), "miles", milesTitle) +
     (bogus.length ? stat("\u26a0 " + bogus.length, bogus.length === 1 ? "bad stop" : "bad stops",
-       "The route flies out to these and straight back, so they resolved to the wrong "
-       + "place. They are inflating the mileage above:\n"
+       "Stops that look wrong \u2014 a flight routed a long way off course, or a name the "
+       + "gazetteer could not match exactly. Each one inflates the mileage above:\n"
        + bogus.map(b => {
            const at = b.at || {};
            const landed = [at.display, (at.countryCode || "").toUpperCase()].filter(Boolean).join(", ");
            return `${b.where} \u2192 landed on ${landed || "an unknown spot"} `
-                + `(${at.lat != null ? at.lat.toFixed(2) + ", " + at.lng.toFixed(2) : "?"}) `
-                + `\u2014 +${mi(b.waste)} phantom mi`;
+                + `(${at.lat != null ? at.lat.toFixed(2) + ", " + at.lng.toFixed(2) : "?"})`
+                + (b.weak ? " \u2014 no exact match, check the spelling"
+                          : ` \u2014 +${Math.round(b.detour).toLocaleString()} mi off course`);
          }).join("\n")
-       + "\n\nFix: Globe tab \u2192 Re-geocode.") : "") +
+       + "\n\nSee the full list on the Globe tab.") : "") +
     stat(legs, legs === 1 ? "leg" : "legs", legsTitle) +
     stat(hotelNights, hotelNights === 1 ? "hotel night" : "hotel nights") +
     stat(bnbNights, bnbNights === 1 ? "rental night" : "rental nights") +
@@ -2029,6 +2069,9 @@ async function updateGrandTotal() {
   const el = document.getElementById("grandTotal");
   const fmt = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency });
   el.textContent = (missing ? "\u26a0 " : "") + fmt(total);
+  // Also in the stats band, because the header copy is hidden on a phone.
+  const inline = document.getElementById("grandTotalInline");
+  if (inline) inline.textContent = (missing ? "\u26a0 " : "") + fmt(total);
   const pct = total > 0 ? Math.round((business / total) * 100) : 0;
   // Show the WORKING, not just the answer: every line says what it counted and whether
   // party size multiplied it, so the headline figure can be checked at a glance.
@@ -2677,12 +2720,25 @@ function orderedStops(it) {
     }
     stops.push({ name: n, kind });
   };
+  const same = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
   for (const day of it.days) {
+    const legs = dayTransports(day);
+    const loc = (day.location || "").trim();
     // Transports come FIRST: they happen during the day, while day.location is where the
     // day ends up. Pushing the location first produced a Seoul -> Montreal -> Seoul ->
     // Vancouver -> Montreal zigzag that both drew wrong and inflated total mileage.
-    for (const t of dayTransports(day)) { push(t.from, "via"); push(t.to, "via"); }
-    push(day.location, "stay");
+    //
+    // EXCEPT when the day is labelled with the city it STARTED in. Day 11 reads "Moraira"
+    // and carries Moraira -> Valencia Airport and Valencia -> Rome: you slept in Moraira,
+    // you did not end there. Taking the label literally appended Moraira AFTER Rome, so the
+    // route crossed to Rome, came back to Spain, and crossed again the next morning --
+    // billing one flight three times. That is why a Montreal-to-Montreal circumnavigation,
+    // which is about 25,000 miles, was reporting nearly 60,000 (JP, 2026-08-20).
+    const startsHere = legs.length && loc && legs.some(t => same(t.from, loc))
+                                          && !legs.some(t => same(t.to, loc));
+    if (startsHere) push(loc, "stay");
+    for (const t of legs) { push(t.from, "via"); push(t.to, "via"); }
+    if (!startsHere) push(day.location, "stay");
     push(day.location2, "stay");
   }
   return stops;
@@ -2693,6 +2749,38 @@ function orderedStops(it) {
 // mistake. The same route as a numbered LIST cannot hide that -- every stop states where it
 // actually landed, and a stop that is a long detour from both of its neighbours is called
 // out by name (JP, 2026-08-20).
+// What actually makes a stop WRONG, used by both the warning chip and the Route check list
+// so the two can never disagree.
+//
+// The old test looked for an out-and-back: one long hop repeated in reverse. It was wrong
+// twice over. It MISSED the real Lithuania stop, because a one-way detour never reverses,
+// and it FIRED on eleven perfectly good days, because a day labelled with its starting city
+// created exactly that out-and-back shape. Both were artifacts, not bad data.
+//
+// The reliable signal is the GEOCODE, not the geometry: a name the gazetteer could only
+// fuzzy-match is a guess, and that is what put a Lithuanian village on the Valencia->Rome
+// leg. Distance is only a backstop, for a name that matches some real place exactly but
+// the wrong one -- Valencia, Venezuela instead of Valencia, Spain, which lands 8,800 miles
+// off course. The threshold is deliberately high: a CONNECTION is a detour by definition.
+// ICN -> YVR -> YUL puts Vancouver 813 miles off the direct line and is exactly how that
+// flight is sold, so anything under a couple of thousand miles is just routing, not a bug
+// (JP, 2026-08-20). A place you STAY may be as far out of the way as it likes -- that is
+// what a world tour is.
+function detourMiles(prev, p, next) {
+  if (!prev || !next) return 0;
+  return (haversineKm(prev, p) + haversineKm(p, next) - haversineKm(prev, next)) * 0.621371;
+}
+
+function badStops(points) {
+  const out = [];
+  points.forEach((p, i) => {
+    const detour = detourMiles(points[i - 1], p, points[i + 1]);
+    const strayedInTransit = p.kind !== "stay" && detour > 2000;
+    if (strayedInTransit || p.weak) out.push({ where: p.name, at: p, detour, weak: !!p.weak });
+  });
+  return out;
+}
+
 function renderRouteCheck(resolved) {
   const el = document.getElementById("routeCheck");
   if (!el) return;
@@ -2705,11 +2793,11 @@ function renderRouteCheck(resolved) {
     const prev = resolved[i - 1], next = resolved[i + 1];
     // Going via this stop instead of straight past it costs this many extra miles. A real
     // stop costs little; one that landed on the wrong continent costs thousands.
-    const detour = prev && next
-      ? miNum(haversineKm(prev, p) + haversineKm(p, next) - haversineKm(prev, next)) : 0;
+    const detour = detourMiles(prev, p, next);
     return { p, no: p.kind === "stay" ? seen.get(key) : null, detour };
   });
-  const odd = rows.filter(r => r.detour > 600);
+  const flagged = new Set(badStops(resolved).map(b => b.at));
+  const odd = rows.filter(r => flagged.has(r.p));
   el.innerHTML = `<h4>Route check \u2014 ${stayNo} places, ${resolved.length} points`
     + (odd.length ? ` \u00b7 <span class="odd">${odd.length} way off course</span>` : "")
     + `</h4><ol>`
@@ -2720,7 +2808,7 @@ function renderRouteCheck(resolved) {
           + `<b>${r.p.name}</b> <span class="where">\u2192 ${at || "?"} `
           + `(${r.p.lat.toFixed(2)}, ${r.p.lng.toFixed(2)})</span>`
           + (r.p.weak ? ` <span class="odd">no exact match for "${r.p.name}" \u2014 check the spelling</span>` : "")
-          + (r.detour > 600 ? ` <span class="odd">+${Math.round(r.detour).toLocaleString()} mi detour</span>` : "")
+          + (flagged.has(r.p) && r.detour > 1 ? ` <span class="odd">+${Math.round(r.detour).toLocaleString()} mi off course</span>` : "")
           + `</li>`;
       }).join("")
     + `</ol>`;
@@ -2967,19 +3055,24 @@ function setPublishState(text, isError) {
 
 // Called from save(). Only ever publishes a trip that HAS days -- an empty planner must
 // never overwrite a good published trip, which is exactly what a fresh device would do.
-function scheduleAutoPublish() {
-  if (!state.autoPublish || !tripHasDays(state)) return;
-  clearTimeout(autoPublishTimer);
-  setPublishState("Saving to phone\u2026");
-  autoPublishTimer = setTimeout(() => publishTrip(true), AUTOPUBLISH_IDLE_MS);
+// Only the machine running the Mac bridge can publish. The phone opened the published copy
+// and then autosaved into a bridge it cannot reach, so it reported "Phone copy is behind --
+// Load failed" over a trip that was perfectly up to date. The published page is a READER:
+// it shows the trip, it never pushes it back (JP, 2026-08-20).
+function canPublish() {
+  return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === "file:";
 }
 
-async function publishTrip(silent) {
-  const btn = document.getElementById("publishBtn");
+function scheduleAutoPublish() {
+  if (!state.autoPublish || !tripHasDays(state) || !canPublish()) return;
   clearTimeout(autoPublishTimer);
-  const was = btn.textContent;
-  btn.disabled = true; if (!silent) btn.textContent = "Publishing\u2026";
-  setPublishState("Publishing\u2026");
+  setPublishState("Saving to phone\u2026");
+  autoPublishTimer = setTimeout(publishTrip, AUTOPUBLISH_IDLE_MS);
+}
+
+async function publishTrip() {
+  clearTimeout(autoPublishTimer);
+  setPublishState("Saving to phone\u2026");
   try {
     const r = await fetch(state.bridgeUrl + "/publish-trip", {
       method: "POST",
@@ -2994,15 +3087,20 @@ async function publishTrip(silent) {
     // Remember our own publish, or this device is immediately offered its own trip back.
     state.publishedAt = d.publishedAt; state.publishedUrl = d.url;
     localStorage.setItem(STORE_KEY, JSON.stringify(state));   // not save(): would re-arm the timer
-    showPublishedUrl();
+    // A device that cannot publish should say nothing about publishing at all -- least of all
+// offer the phone a link to the page the phone is already looking at.
+if (!canPublish()) {
+  ["publishState", "publishedUrl"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+}
+showPublishedUrl();
     setPublishState("On your phone \u2014 " + new Date(d.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-    if (!silent) alert(`Published ${d.days} days.\n\nOpen this on your phone:\n${d.url}\n\n`
-        + "GitHub Pages takes about a minute to rebuild, so give it a moment.");
   } catch (e) {
-    setPublishState("Phone copy is behind \u2014 " + e.message, true);
-    if (!silent) alert("Could not publish: " + e.message
-        + "\n\nThe Mac bridge has to be running (the dot next to \u2699 is green).");
-  } finally { btn.disabled = false; btn.textContent = was; }
+    // Named plainly: this is the one state where the phone is showing something stale.
+    setPublishState("Phone copy is behind \u2014 Mac bridge not running", true);
+  }
 }
 
 function showPublishedUrl() {
@@ -3013,11 +3111,9 @@ function showPublishedUrl() {
 }
 showPublishedUrl();
 
-document.getElementById("publishBtn").addEventListener("click", () => publishTrip(false));
-
 // A pending autosave must not die with the tab -- send it immediately instead.
 window.addEventListener("beforeunload", () => {
-  if (!autoPublishTimer || !state.autoPublish || !tripHasDays(state)) return;
+  if (!autoPublishTimer || !state.autoPublish || !tripHasDays(state) || !canPublish()) return;
   const body = JSON.stringify({ homeCurrency: state.homeCurrency, itineraries: state.itineraries,
                                 routeOptions: state.routeOptions });
   // fetch() is cancelled on unload; sendBeacon is the one request the browser promises to
