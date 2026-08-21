@@ -784,6 +784,17 @@ function wireBizFields(prefix) {
   if (!cb || !row) return;
   cb.addEventListener("change", () => { row.style.display = cb.checked ? "" : "none"; });
 }
+// Zero is a PRICE, not a blank. `parseFloat(v) || null` reads a free meal, a comped room
+// and an award flight as "never filled in", so JP typed 0 into Dinner at Tapeo to clear the
+// unpriced warning and watched it save as null and stay flagged (2026-08-21). Only an empty
+// or unparseable box is null; every real number, 0 included, survives.
+function priceField(id) {
+  const el = document.getElementById(id);
+  if (!el || !el.value.trim()) return null;
+  const n = parseFloat(el.value);
+  return isNaN(n) ? null : n;
+}
+
 function readBizFields(prefix) {
   const cb = document.getElementById(prefix + "_biz");
   if (!cb) return { business: false, businessPct: 100 };
@@ -989,7 +1000,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       <label class="muted">Pick a stored flight option (from Flight Options tab)</label>
       <select id="f_pick"><option value="">— manual entry —</option>${options.map(o=>`<option value="${o.id}" ${f.optionId===o.id?"selected":""}>${o.from} → ${o.to}: ${o.airline||"?"} — ${money(o.price, o.currency)}</option>`).join("")}</select>
       <label class="muted">Or manual: airline / price / currency</label>
-      <div class="row"><input id="f_air" placeholder="airline" value="${f.airline||""}" style="flex:1"/><input id="f_price" type="number" placeholder="price" value="${f.price||""}" style="width:90px"/><select id="f_cur">${["USD","CAD","EUR","GBP","AUD","JPY"].map(c=>`<option ${f.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
+      <div class="row"><input id="f_air" placeholder="airline" value="${f.airline||""}" style="flex:1"/><input id="f_price" type="number" placeholder="price" value="${f.price != null ? f.price : ""}" style="width:90px"/><select id="f_cur">${["USD","CAD","EUR","GBP","AUD","JPY"].map(c=>`<option ${f.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
       <label class="muted" style="margin-top:10px">From city <span style="color:var(--bad)">*</span> (departure timezone)</label>
       <input id="f_from" required value="${f.from || inferredFrom}" placeholder="e.g. Barcelona" />
       <label class="muted">To city <span style="color:var(--bad)">*</span> (arrival timezone — sets NEXT day's location too)</label>
@@ -1087,7 +1098,7 @@ document.getElementById("slotSave").addEventListener("click", async () => {
       name,
       startTime: document.getElementById("a_start").value,
       endTime: document.getElementById("a_end").value,
-      price: parseFloat(document.getElementById("a_price").value) || null,
+      price: priceField("a_price"),
       currency: document.getElementById("a_cur").value,
       operator: document.getElementById("a_op").value.trim(),
       notes: document.getElementById("a_notes").value.trim(),
@@ -1167,15 +1178,15 @@ document.getElementById("slotSave").addEventListener("click", async () => {
     const departTime = document.getElementById("f_depart").value;
     const arriveTime = document.getElementById("f_arrive").value;
     const overnight = document.getElementById("f_overnight").checked;
-    const price0 = parseFloat(document.getElementById("f_price").value);
+    const price0 = priceField("f_price");
     // Same rule as a transport, unless the whole slot is being emptied out.
-    if ((pick || price0) && !requireEnds("f")) return;
+    if ((pick || price0 != null) && !requireEnds("f")) return;
     if (pick) {
       const opt = allOptionsFlat().find(o => o.id === pick);
       day.flight = { optionId: opt.id, airline: opt.airline, price: opt.price, currency: opt.currency, from: from || opt.from, to: to || opt.to, departTime, arriveTime, overnight };
     } else {
-      const price = parseFloat(document.getElementById("f_price").value);
-      day.flight = price ? { airline: document.getElementById("f_air").value, price, currency: document.getElementById("f_cur").value, from, to, departTime, arriveTime, overnight } : null;
+      const price = priceField("f_price");
+      day.flight = price != null ? { airline: document.getElementById("f_air").value, price, currency: document.getElementById("f_cur").value, from, to, departTime, arriveTime, overnight } : null;
     }
     // "so I don't have to manually add the destination every time" -- JP, 2026-08-20.
     if (day.flight && day.flight.to) {
@@ -2423,8 +2434,8 @@ async function searchHotel(day) {
 document.getElementById("addOptBtn").addEventListener("click", () => {
   const from = document.getElementById("optFrom").value.trim();
   const to = document.getElementById("optTo").value.trim();
-  const price = parseFloat(document.getElementById("optPrice").value);
-  if (!from || !to || !price) return alert("From, To and Price are required.");
+  const price = priceField("optPrice");
+  if (!from || !to || price == null) return alert("From, To and Price are required.");
   const key = routeKey(from, to);
   state.routeOptions[key] = state.routeOptions[key] || [];
   state.routeOptions[key].push({
