@@ -2569,7 +2569,12 @@ function pickPlace(results, name) {
   const want = norm(name);
   const usable = results.filter(g => typeof g.latitude === "number");
   const exact = usable.filter(g => norm(g.name) === want);
-  return exact.find(g => (g.feature_code || "").startsWith("PPL")) || exact[0] || usable[0] || null;
+  const hit = exact.find(g => (g.feature_code || "").startsWith("PPL")) || exact[0] || usable[0] || null;
+  // No exact match means this is a GUESS, and a fuzzy guess crosses borders happily: one
+  // letter wrong -- "Valancia" for Valencia -- matched Valancia\u010diai, a Lithuanian village
+  // with no recorded population, and drew two 1,500-mile flights to it. The coordinate is
+  // still the best on offer, so use it, but never let it pass for a fact (JP, 2026-08-20).
+  return hit ? { g: hit, exact: exact.includes(hit) } : null;
 }
 
 async function openMeteoGeocode(name) {
@@ -2579,12 +2584,14 @@ async function openMeteoGeocode(name) {
     const r = await fetch(url);
     if (!r.ok) return null;
     const d = await r.json();
-    const g = pickPlace((d && d.results) || [], name);
-    if (!g) return null;
+    const picked = pickPlace((d && d.results) || [], name);
+    if (!picked) return null;
+    const g = picked.g;
     return {
       lat: g.latitude, lng: g.longitude,
       display: [g.name, g.admin1, g.country].filter(Boolean).join(", "),
       countryCode: g.country_code ? g.country_code.toUpperCase() : null,
+      weak: picked.exact ? undefined : true,
     };
   } catch (e) { return null; }
 }
@@ -2712,7 +2719,7 @@ function renderRouteCheck(resolved) {
           + (r.no ? "" : "\u00b7 ")
           + `<b>${r.p.name}</b> <span class="where">\u2192 ${at || "?"} `
           + `(${r.p.lat.toFixed(2)}, ${r.p.lng.toFixed(2)})</span>`
-          + (r.p.weak ? ` <span class="odd">not a known town \u2014 guessed</span>` : "")
+          + (r.p.weak ? ` <span class="odd">no exact match for "${r.p.name}" \u2014 check the spelling</span>` : "")
           + (r.detour > 600 ? ` <span class="odd">+${Math.round(r.detour).toLocaleString()} mi detour</span>` : "")
           + `</li>`;
       }).join("")
