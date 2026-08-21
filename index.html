@@ -124,7 +124,11 @@
   /* ONE scroll container for both axes so sticky can freeze the ruler (left) and the
      day + hotel rows (top). With the old split (#content vertical, #calWrap horizontal)
      there was no single ancestor for sticky to resolve against. */
-  #calWrap { overflow: auto; flex: 1; min-height: 240px; padding-bottom: 8px; outline: none; border-radius: 10px; }
+  /* overscroll-behavior keeps a flick that reaches the end of the calendar from handing the
+     scroll on to the page behind it -- that hand-off is what reads as the whole view
+     bouncing on a phone. */
+  #calWrap { overflow: auto; flex: 1; min-height: 240px; padding-bottom: 8px; outline: none;
+    border-radius: 10px; overscroll-behavior: contain; }
   #calGrid { position: relative; display: flex; gap: 1px; background: var(--border); border: 1px solid var(--border); width: max-content; }
   .day-col { width: 158px; background: var(--panel); flex-shrink: 0; }
   .day-col.selected { box-shadow: inset 0 0 0 2px var(--accent); }
@@ -154,11 +158,18 @@
   .hour-ruler .day-head { z-index: 9; }          /* the corner sits above both frozen bands */
   .hotel-strip { position: sticky; top: var(--day-head-h); z-index: 5;
     background: var(--panel); overflow: visible; }
-  .hour-ruler .hotel-strip { z-index: 9; }
+  .hour-ruler .hotel-strip { z-index: 9; background: var(--panel); }
+  .hour-ruler .hotel-strip > * { visibility: hidden; }
   /* The ruler's header must be EXACTLY as tall as a real day header or every hour line
      is offset against the blocks beside it. Its own content varies in height (no flag,
-     no location link), so pin it rather than relying on visibility:hidden matching. */
-  #calGrid.timeline .hour-ruler .day-head { visibility: hidden; height: var(--day-head-h); box-sizing: border-box; }
+     no location link), so pin the height rather than relying on the content matching.
+     It must also be OPAQUE. visibility:hidden hid the box AND its background, so the hour
+     rows scrolling underneath showed straight through the corner and 10:00, 11:00, 12:00
+     appeared alongside the day headers (JP, 2026-08-20). Blank the contents, keep the
+     panel behind them. */
+  #calGrid.timeline .hour-ruler .day-head { height: var(--day-head-h); box-sizing: border-box;
+    background: var(--panel); }
+  #calGrid.timeline .hour-ruler .day-head > * { visibility: hidden; }
   #calGrid.timeline .day-head { height: var(--day-head-h); box-sizing: border-box; overflow: hidden; }
   .hour-row { border-bottom: 1px dotted var(--border); font-size: 9px;
     color: var(--ink-dim); padding: 1px 4px; box-sizing: border-box; }
@@ -251,14 +262,24 @@
 
   /* --- Mobile: this travels with JP, so it has to work on a phone --- */
   @media (max-width: 820px) {
-    body { flex-direction: column; height: auto; min-height: 100vh; overflow: auto; }
+    /* The page itself does NOT scroll on a phone. Two nested scrollers -- the document and
+       the calendar -- is what made a swipe bounce: iOS rubber-bands the outer one as soon
+       as the inner one runs out. The app is exactly one screen tall and the calendar is the
+       only thing that moves. dvh, not vh, so Safari's collapsing toolbar does not resize
+       the world mid-scroll (JP, 2026-08-20). */
+    body { flex-direction: column; height: 100dvh; min-height: 0; overflow: hidden; }
     header { flex-wrap: wrap; gap: 10px; padding: 10px 12px; }
     header h1 { font-size: 14px; }
     nav { order: 3; width: 100%; overflow-x: auto; }
     header .totals { font-size: 11px; }
-    #content { padding: 10px; overflow: visible; }
-    #view-calendar.active { height: auto; }
-    #calWrap { max-height: 70vh; min-height: 60vh; }
+    /* min-height on a flex item defaults to AUTO, which means "never shrink below your
+       content". #main inherited that, so the column grew to its content and pushed the
+       document past the viewport no matter what body said -- which is the scroller that
+       was bouncing. Every link in the chain has to be allowed to shrink. */
+    #main { min-height: 0; }
+    #content { padding: 10px; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+    #view-calendar.active { flex: 1 1 0; height: auto; min-height: 0; }
+    #calWrap { flex: 1 1 0; max-height: none; min-height: 0; }
     /* Narrower day columns so ~3 fit on a phone, and the ruler stays slim. */
     #calGrid.timeline .day-col, #calGrid.timeline .add-day { width: 108px; }
     #calGrid.timeline .hour-ruler { width: 34px; }
