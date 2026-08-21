@@ -1,0 +1,1003 @@
+{
+  "version": 1,
+  "homeCurrency": "CAD",
+  "itineraries": [
+    {
+      "id": "mio4m1k1",
+      "name": "Plan A",
+      "days": [
+        {
+          "id": "syxokwrn",
+          "date": "2026-10-04",
+          "location": "Montreal",
+          "hotel": {
+            "name": "",
+            "redEye": true,
+            "price": null,
+            "currency": "CAD",
+            "photoUrl": "",
+            "nights": 1,
+            "checkIn": "2026-10-04",
+            "checkOut": "2026-10-05",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": {
+            "airline": "AC",
+            "price": 1500,
+            "currency": "CAD",
+            "from": "Montreal",
+            "to": "Barcelona",
+            "departTime": "18:35",
+            "arriveTime": "08:00",
+            "id": "legacy",
+            "type": "flight",
+            "overnight": true,
+            "operator": "AC",
+            "business": true,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "transports": []
+        },
+        {
+          "id": "2l0pr3pk",
+          "date": "2026-10-05",
+          "location": "Barcelona",
+          "hotel": null,
+          "flight": null
+        },
+        {
+          "id": "sgazzqf2",
+          "date": "2026-10-06",
+          "location": "Barcelona",
+          "hotel": null,
+          "flight": null,
+          "activities": [
+            {
+              "id": "oix8m2i5",
+              "name": "Dinner at Tapeo",
+              "startTime": "18:30",
+              "endTime": "20:00",
+              "price": null,
+              "currency": "CAD",
+              "notes": "",
+              "business": false,
+              "businessPct": 100,
+              "booked": true,
+              "confirmation": "",
+              "reference": "",
+              "info": "T"
+            }
+          ]
+        },
+        {
+          "id": "9c5l82jw",
+          "date": "2026-10-07",
+          "location": "Moraira",
+          "hotel": {
+            "name": "Villa",
+            "redEye": false,
+            "price": 0,
+            "currency": "USD",
+            "photoUrl": "https://a0.muscache.com/im/pictures/hosting/Hosting-1644476666314956588/original/faa64fa8-a2ad-48c2-8d2c-76189724725a.jpeg?im_w=720&width=720&quality=70&auto=webp",
+            "nights": 7,
+            "checkIn": "2026-10-07",
+            "checkOut": "2026-10-14",
+            "photoPos": 50.984375,
+            "business": false,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "transports": [
+            {
+              "id": "8hk8jkf3",
+              "type": "drive",
+              "from": "Barcelona",
+              "to": "Moraira",
+              "departTime": "11:30",
+              "arriveTime": "16:22",
+              "overnight": false,
+              "price": 800,
+              "currency": "CAD",
+              "operator": "",
+              "business": true,
+              "businessPct": 100,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            }
+          ]
+        },
+        {
+          "id": "ofx0zs26",
+          "date": "2026-10-08",
+          "location": "Moraira",
+          "hotel": {
+            "name": "Villa",
+            "redEye": false,
+            "price": 0,
+            "currency": "USD",
+            "photoUrl": "https://a0.muscache.com/im/pictures/hosting/Hosting-1644476666314956588/original/faa64fa8-a2ad-48c2-8d2c-76189724725a.jpeg?im_w=720&width=720&quality=70&auto=webp",
+            "nights": 7,
+            "checkIn": "2026-10-07",
+            "checkOut": "2026-10-14",
+            "photoPos": 50.984375,
+            "business": false,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null
+        },
+        {
+          "id": "9dve402q",
+          "date": "2026-10-09",
+          "location": "Moraira",
+          "hotel": {
+            "name": "Villa",
+            "redEye": false,
+            "price": 0,
+            "currency": "USD",
+            "photoUrl": "https://a0.muscache.com/im/pictures/hosting/Hosting-1644476666314956588/original/faa64fa8-a2ad-48c2-8d2c-76189724725a.jpeg?im_w=720&width=720&quality=70&auto=webp",
+            "nights": 7,
+            "checkIn": "2026-10-07",
+            "checkOut": "2026-10-14",
+            "photoPos": 50.984375,
+            "business": false,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null
+        },
+        {
+          "id": "m3bbqxo2",
+          "date": "2026-10-10",
+          "location": "Moraira",
+          "hotel": {
+            "name": "Villa",
+            "redEye": false,
+            "price": 0,
+            "currency": "USD",
+            "photoUrl": "https://a0.muscache.com/im/pictures/hosting/Hosting-1644476666314956588/original/faa64fa8-a2ad-48c2-8d2c-76189724725a.jpeg?im_w=720&width=720&quality=70&auto=webp",
+            "nights": 7,
+            "checkIn": "2026-10-07",
+            "checkOut": "2026-10-14",
+            "photoPos": 50.984375,
+            "business": false,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null
+        },
+        {
+          "id": "0wvbkkj1",
+          "date": "2026-10-11",
+          "location": "Moraira",
+          "hotel": {
+            "name": "Villa",
+            "redEye": false,
+            "price": 0,
+            "currency": "USD",
+            "photoUrl": "https://a0.muscache.com/im/pictures/hosting/Hosting-1644476666314956588/original/faa64fa8-a2ad-48c2-8d2c-76189724725a.jpeg?im_w=720&width=720&quality=70&auto=webp",
+            "nights": 7,
+            "checkIn": "2026-10-07",
+            "checkOut": "2026-10-14",
+            "photoPos": 50.984375,
+            "business": false,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null
+        },
+        {
+          "id": "cokfylj8",
+          "date": "2026-10-12",
+          "location": "Moraira",
+          "hotel": {
+            "name": "Villa",
+            "redEye": false,
+            "price": 0,
+            "currency": "USD",
+            "photoUrl": "https://a0.muscache.com/im/pictures/hosting/Hosting-1644476666314956588/original/faa64fa8-a2ad-48c2-8d2c-76189724725a.jpeg?im_w=720&width=720&quality=70&auto=webp",
+            "nights": 7,
+            "checkIn": "2026-10-07",
+            "checkOut": "2026-10-14",
+            "photoPos": 50.984375,
+            "business": false,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null
+        },
+        {
+          "id": "ybjiovw2",
+          "date": "2026-10-13",
+          "location": "Moraira",
+          "hotel": {
+            "name": "Villa",
+            "redEye": false,
+            "price": 0,
+            "currency": "USD",
+            "photoUrl": "https://a0.muscache.com/im/pictures/hosting/Hosting-1644476666314956588/original/faa64fa8-a2ad-48c2-8d2c-76189724725a.jpeg?im_w=720&width=720&quality=70&auto=webp",
+            "nights": 7,
+            "checkIn": "2026-10-07",
+            "checkOut": "2026-10-14",
+            "photoPos": 50.984375,
+            "business": false,
+            "businessPct": 100,
+            "booked": true,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null
+        },
+        {
+          "id": "njt9fuxv",
+          "date": "2026-10-14",
+          "location": "Moraira",
+          "hotel": null,
+          "flight": null,
+          "transports": [
+            {
+              "id": "5wl1bjxw",
+              "type": "flight",
+              "from": "Valencia",
+              "to": "Rome",
+              "departTime": "15:25",
+              "arriveTime": "17:30",
+              "overnight": false,
+              "price": 100,
+              "currency": "CAD",
+              "operator": "Wizz",
+              "business": false,
+              "businessPct": 100,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            },
+            {
+              "id": "eqt5r9nv",
+              "type": "drive",
+              "from": "Moraira",
+              "to": "Valencia Airport",
+              "departTime": "11:30",
+              "arriveTime": "13:05",
+              "overnight": false,
+              "price": null,
+              "currency": "CAD",
+              "operator": "",
+              "business": false,
+              "businessPct": 100,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            }
+          ]
+        },
+        {
+          "id": "zrc890ta",
+          "date": "2026-10-15",
+          "location": "Rome",
+          "hotel": null,
+          "flight": null,
+          "location2": ""
+        },
+        {
+          "id": "hwa89xmy",
+          "date": "2026-10-16",
+          "location": "Rome",
+          "hotel": {
+            "name": "The Nile Ritz-Carlton, Cairo",
+            "price": 453,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWk5l5Wi3vqr1oqgkWJeqai0XVoRdD9cOo2RU7BviVJ5_3F7kaeKiABBJbJlttdXXgIgevd3ZqfbelDbeNG3utxAmLTmlUsiKix58070mTfjHSoka0XCQulLL-vlFYQstTfWb-jpd8-iiL6C=s287-w287-h192-n-k-no-v1",
+            "nights": 2,
+            "checkIn": "2026-10-16",
+            "checkOut": "2026-10-18"
+          },
+          "flight": null,
+          "transports": [
+            {
+              "id": "pf79jzu5",
+              "type": "flight",
+              "from": "Rome",
+              "to": "Cairo",
+              "departTime": "14:00",
+              "arriveTime": "18:15",
+              "overnight": false,
+              "price": 300,
+              "currency": "CAD",
+              "operator": "Egypt AIr"
+            }
+          ],
+          "location2": "Cairo"
+        },
+        {
+          "id": "yh7dw8xd",
+          "date": "2026-10-17",
+          "location": "Cairo",
+          "hotel": {
+            "name": "The Nile Ritz-Carlton, Cairo",
+            "price": 453,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWk5l5Wi3vqr1oqgkWJeqai0XVoRdD9cOo2RU7BviVJ5_3F7kaeKiABBJbJlttdXXgIgevd3ZqfbelDbeNG3utxAmLTmlUsiKix58070mTfjHSoka0XCQulLL-vlFYQstTfWb-jpd8-iiL6C=s287-w287-h192-n-k-no-v1",
+            "nights": 2,
+            "checkIn": "2026-10-16",
+            "checkOut": "2026-10-18"
+          },
+          "flight": null
+        },
+        {
+          "id": "b227akzb",
+          "date": "2026-10-18",
+          "location": "Cairo",
+          "hotel": {
+            "name": "W Abu Dhabi - Yas Island",
+            "price": 209,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWmLzXEIyjDaq92cKt5GFbgIW1QltSl3Nc4LSB4YfmsmXNaOPx3WXX6VtWM0Q-R0QbTZCLzy4ofjikI788HdCn_UAgMjx8KfE9ybkqlQ2YMKOVb1MsMkP-sEdoCFXXdnYkdBgTrR_y2EYxmo=s287-w287-h192-n-k-no-v1",
+            "nights": 2,
+            "checkIn": "2026-10-18",
+            "checkOut": "2026-10-20",
+            "photoPos": 50,
+            "business": true,
+            "businessPct": 100
+          },
+          "flight": null,
+          "activities": [],
+          "transports": [
+            {
+              "id": "vorihlne",
+              "type": "flight",
+              "from": "Cairo",
+              "to": "Abu Dhabi",
+              "departTime": "15:00",
+              "arriveTime": "19:30",
+              "overnight": false,
+              "price": 500,
+              "currency": "CAD",
+              "operator": "Ethiad",
+              "business": true,
+              "businessPct": 50
+            }
+          ]
+        },
+        {
+          "id": "44bc1vx7",
+          "date": "2026-10-19",
+          "location": "Abu Dhabi",
+          "hotel": {
+            "name": "W Abu Dhabi - Yas Island",
+            "price": 209,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWmLzXEIyjDaq92cKt5GFbgIW1QltSl3Nc4LSB4YfmsmXNaOPx3WXX6VtWM0Q-R0QbTZCLzy4ofjikI788HdCn_UAgMjx8KfE9ybkqlQ2YMKOVb1MsMkP-sEdoCFXXdnYkdBgTrR_y2EYxmo=s287-w287-h192-n-k-no-v1",
+            "nights": 2,
+            "checkIn": "2026-10-18",
+            "checkOut": "2026-10-20",
+            "photoPos": 50,
+            "business": true,
+            "businessPct": 100
+          },
+          "flight": null,
+          "activities": []
+        },
+        {
+          "id": "c2x4mh6o",
+          "date": "2026-10-20",
+          "location": "Abu Dhabi",
+          "hotel": {
+            "name": "",
+            "redEye": true,
+            "price": null,
+            "currency": "CAD",
+            "photoUrl": "",
+            "nights": 1,
+            "checkIn": "2026-10-20",
+            "checkOut": "2026-10-21",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": [],
+          "transports": [
+            {
+              "id": "rwtme3zx",
+              "type": "flight",
+              "from": "Abu Dhabi",
+              "to": "Phuket",
+              "departTime": "20:55",
+              "arriveTime": "06:40",
+              "overnight": true,
+              "price": 1500,
+              "currency": "CAD",
+              "operator": "Ethiad",
+              "business": true,
+              "businessPct": 50
+            }
+          ],
+          "location2": ""
+        },
+        {
+          "id": "w2p2qzdv",
+          "date": "2026-10-21",
+          "location": "Phuket",
+          "hotel": {
+            "name": "JW Marriott Phuket Resort & Spa",
+            "price": 200,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWl00-f0M-XMjBTKRoTiCh1jTGjYt0lB_s4J--igV9AmUhLiCPZ4xqgT6DMCnGlohd3PcdXVz64qzoIwT7cYUWLU5lzomqLJjsV0yikLfBjMt2XR4XRenebUSi6FuAGmzVgXISQGKfdEE_OK=s287-w287-h192-n-k-no-v1",
+            "nights": 5,
+            "checkIn": "2026-10-21",
+            "checkOut": "2026-10-26",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": []
+        },
+        {
+          "id": "ynd2gz5u",
+          "date": "2026-10-22",
+          "location": "Phuket",
+          "hotel": {
+            "name": "JW Marriott Phuket Resort & Spa",
+            "price": 200,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWl00-f0M-XMjBTKRoTiCh1jTGjYt0lB_s4J--igV9AmUhLiCPZ4xqgT6DMCnGlohd3PcdXVz64qzoIwT7cYUWLU5lzomqLJjsV0yikLfBjMt2XR4XRenebUSi6FuAGmzVgXISQGKfdEE_OK=s287-w287-h192-n-k-no-v1",
+            "nights": 5,
+            "checkIn": "2026-10-21",
+            "checkOut": "2026-10-26",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": []
+        },
+        {
+          "id": "0jytgly1",
+          "date": "2026-10-23",
+          "location": "Phuket",
+          "hotel": {
+            "name": "JW Marriott Phuket Resort & Spa",
+            "price": 200,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWl00-f0M-XMjBTKRoTiCh1jTGjYt0lB_s4J--igV9AmUhLiCPZ4xqgT6DMCnGlohd3PcdXVz64qzoIwT7cYUWLU5lzomqLJjsV0yikLfBjMt2XR4XRenebUSi6FuAGmzVgXISQGKfdEE_OK=s287-w287-h192-n-k-no-v1",
+            "nights": 5,
+            "checkIn": "2026-10-21",
+            "checkOut": "2026-10-26",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": []
+        },
+        {
+          "id": "mqyu613m",
+          "date": "2026-10-24",
+          "location": "Phuket",
+          "hotel": {
+            "name": "JW Marriott Phuket Resort & Spa",
+            "price": 200,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWl00-f0M-XMjBTKRoTiCh1jTGjYt0lB_s4J--igV9AmUhLiCPZ4xqgT6DMCnGlohd3PcdXVz64qzoIwT7cYUWLU5lzomqLJjsV0yikLfBjMt2XR4XRenebUSi6FuAGmzVgXISQGKfdEE_OK=s287-w287-h192-n-k-no-v1",
+            "nights": 5,
+            "checkIn": "2026-10-21",
+            "checkOut": "2026-10-26",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": []
+        },
+        {
+          "id": "sf56dsx3",
+          "date": "2026-10-25",
+          "location": "Phuket",
+          "hotel": {
+            "name": "JW Marriott Phuket Resort & Spa",
+            "price": 200,
+            "currency": "USD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWl00-f0M-XMjBTKRoTiCh1jTGjYt0lB_s4J--igV9AmUhLiCPZ4xqgT6DMCnGlohd3PcdXVz64qzoIwT7cYUWLU5lzomqLJjsV0yikLfBjMt2XR4XRenebUSi6FuAGmzVgXISQGKfdEE_OK=s287-w287-h192-n-k-no-v1",
+            "nights": 5,
+            "checkIn": "2026-10-21",
+            "checkOut": "2026-10-26",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": []
+        },
+        {
+          "id": "xqjmg2cu",
+          "date": "2026-10-26",
+          "location": "Phuket",
+          "hotel": null,
+          "flight": null,
+          "activities": []
+        },
+        {
+          "id": "c0x1o78q",
+          "date": "2026-10-27",
+          "location": "Singapore",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "clto2a95",
+          "date": "2026-10-28",
+          "location": "Singapore",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "c3c9lke9",
+          "date": "2026-10-29",
+          "location": "Hong Kong",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "i8bo1t3g",
+          "date": "2026-10-30",
+          "location": "Hong Kong",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "wyrrs7gd",
+          "date": "2026-10-31",
+          "location": "Sanya",
+          "hotel": {
+            "name": "The Sanya EDITION",
+            "redEye": false,
+            "price": 360,
+            "currency": "CAD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-proxy/ALd4DhHjBUhQlk_dUc59JJa7vq2y0wcqBz3PiZu0VAGmMiXZ9cihLpS82aJ0MqNxGNXfjfK-i7xZVIr38xYacXoDH0c6w7yGxq0U9nR-6LgQvzhRLKzo-ArtNFjhhTn5bGxohcmA5Y-HupyHbIsRPyDsaxVY51kuAeedY5KNkXrkixEDwDXF6MElTd0X=s287-w287-h192-n-k-no-v1",
+            "nights": 2,
+            "checkIn": "2026-10-31",
+            "checkOut": "2026-11-02",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "apacyygw",
+          "date": "2026-11-01",
+          "location": "Sanya",
+          "hotel": {
+            "name": "The Sanya EDITION",
+            "redEye": false,
+            "price": 360,
+            "currency": "CAD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-proxy/ALd4DhHjBUhQlk_dUc59JJa7vq2y0wcqBz3PiZu0VAGmMiXZ9cihLpS82aJ0MqNxGNXfjfK-i7xZVIr38xYacXoDH0c6w7yGxq0U9nR-6LgQvzhRLKzo-ArtNFjhhTn5bGxohcmA5Y-HupyHbIsRPyDsaxVY51kuAeedY5KNkXrkixEDwDXF6MElTd0X=s287-w287-h192-n-k-no-v1",
+            "nights": 2,
+            "checkIn": "2026-10-31",
+            "checkOut": "2026-11-02",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "bbntr38p",
+          "date": "2026-11-02",
+          "location": "Sanya",
+          "hotel": {
+            "name": "Atlantis Sanya",
+            "redEye": false,
+            "price": 291,
+            "currency": "CAD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-proxy/ALd4DhE9OKvxQnKCG7uE8xoJJ1VmKb3jaFFK30rJUfC-sSHOEMzOghC1EtWyhTLej_7Nl7GixzvrtNRkhzODentz7G1KSkn2K3C5nWtemSS7aJ39gGZhavh5Jpsezc6HtuY7y62tS2j9N01LJmo24cAu3dTADPgQ5NZPrwQsuivhnRsKRP-Mu4ulQaITFQ=s287-w287-h192-n-k-no-v1",
+            "nights": 2,
+            "checkIn": "2026-11-02",
+            "checkOut": "2026-11-04",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "hq3fcrli",
+          "date": "2026-11-03",
+          "location": "Sanya",
+          "hotel": {
+            "name": "Atlantis Sanya",
+            "redEye": false,
+            "price": 291,
+            "currency": "CAD",
+            "photoUrl": "https://lh3.googleusercontent.com/gps-proxy/ALd4DhE9OKvxQnKCG7uE8xoJJ1VmKb3jaFFK30rJUfC-sSHOEMzOghC1EtWyhTLej_7Nl7GixzvrtNRkhzODentz7G1KSkn2K3C5nWtemSS7aJ39gGZhavh5Jpsezc6HtuY7y62tS2j9N01LJmo24cAu3dTADPgQ5NZPrwQsuivhnRsKRP-Mu4ulQaITFQ=s287-w287-h192-n-k-no-v1",
+            "nights": 2,
+            "checkIn": "2026-11-02",
+            "checkOut": "2026-11-04",
+            "photoPos": 50,
+            "business": false,
+            "businessPct": 100,
+            "booked": false,
+            "confirmation": "",
+            "reference": "",
+            "info": ""
+          },
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "ge7z3tq7",
+          "date": "2026-11-04",
+          "location": "Sanya",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": "",
+          "transports": [
+            {
+              "id": "73hkjilp",
+              "type": "flight",
+              "from": "Sanya",
+              "to": "",
+              "departTime": "18:40",
+              "arriveTime": "20:25",
+              "overnight": false,
+              "price": 200,
+              "currency": "CAD",
+              "operator": "Shenzhen",
+              "business": false,
+              "businessPct": 100,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            }
+          ]
+        },
+        {
+          "id": "ug4en6fj",
+          "date": "2026-11-05",
+          "location": "Shenzhen",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "bwu5kuex",
+          "date": "2026-11-06",
+          "location": "Shenzhen",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "sdhpa8rg",
+          "date": "2026-11-07",
+          "location": "Guangzhou",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "8x7xr78e",
+          "date": "2026-11-08",
+          "location": "Guangzhou",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "9187i9pw",
+          "date": "2026-11-09",
+          "location": "Guilin",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "epsrl8tu",
+          "date": "2026-11-10",
+          "location": "Guilin",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "ufemsl1v",
+          "date": "2026-11-11",
+          "location": "Guilin",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "j6q1zlmv",
+          "date": "2026-11-12",
+          "location": "Shanghai",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": "",
+          "transports": [
+            {
+              "id": "s4xoeey1",
+              "type": "flight",
+              "from": "Guilin",
+              "to": "Shanghai",
+              "departTime": "10:00",
+              "arriveTime": "12:05",
+              "overnight": false,
+              "price": 350,
+              "currency": "CAD",
+              "operator": "Air China",
+              "business": true,
+              "businessPct": 50,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            }
+          ]
+        },
+        {
+          "id": "pk5iqhaa",
+          "date": "2026-11-13",
+          "location": "Shanghai",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "n4fawu5b",
+          "date": "2026-11-14",
+          "location": "Shanghai",
+          "hotel": null,
+          "flight": null,
+          "transports": [],
+          "activities": []
+        },
+        {
+          "id": "mkcnnnui",
+          "date": "2026-11-15",
+          "location": "Shanghai",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": "",
+          "transports": [
+            {
+              "id": "a7hmwmtc",
+              "type": "flight",
+              "from": "Shanghai",
+              "to": "Taipei",
+              "departTime": "15:45",
+              "arriveTime": "17:40",
+              "overnight": false,
+              "price": 500,
+              "currency": "CAD",
+              "operator": "China Southern",
+              "business": true,
+              "businessPct": 50,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": "Business Class"
+            }
+          ]
+        },
+        {
+          "id": "jw41yrbn",
+          "date": "2026-11-16",
+          "location": "Taipei",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "5gq6seqd",
+          "date": "2026-11-17",
+          "location": "Taipei",
+          "hotel": null,
+          "flight": null,
+          "transports": [],
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "hodqvj7u",
+          "date": "2026-11-18",
+          "location": "Taipei",
+          "hotel": null,
+          "flight": null,
+          "transports": [],
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "dbjuc473",
+          "date": "2026-11-19",
+          "location": "Taipei",
+          "hotel": null,
+          "flight": null,
+          "transports": [
+            {
+              "id": "gmyy32v0",
+              "type": "flight",
+              "from": "Taipei",
+              "to": "Seoul",
+              "departTime": "13:50",
+              "arriveTime": "17:30",
+              "overnight": false,
+              "price": 250,
+              "currency": "CAD",
+              "operator": "Eastar Jet",
+              "business": true,
+              "businessPct": 50,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": "TSA–GMP"
+            }
+          ],
+          "activities": []
+        },
+        {
+          "id": "s3tgpvdb",
+          "date": "2026-11-20",
+          "location": "Seoul",
+          "hotel": null,
+          "flight": null,
+          "transports": [],
+          "activities": [],
+          "location2": ""
+        },
+        {
+          "id": "u5bsp686",
+          "date": "2026-11-21",
+          "location": "Seoul",
+          "hotel": null,
+          "flight": null,
+          "activities": [],
+          "transports": [
+            {
+              "id": "bz50e8v2",
+              "type": "flight",
+              "from": "Seoul",
+              "to": "Vancouver",
+              "departTime": "18:55",
+              "arriveTime": "12:45",
+              "price": 0,
+              "currency": "CAD",
+              "operator": "Air Canada",
+              "business": false,
+              "businessPct": 100
+            },
+            {
+              "id": "g36cbybs",
+              "type": "flight",
+              "from": "Vancouver",
+              "to": "Montreal",
+              "departTime": "14:00",
+              "arriveTime": "20:45",
+              "overnight": false,
+              "price": 0,
+              "currency": "CAD",
+              "operator": "Air Canada",
+              "business": false,
+              "businessPct": 100
+            }
+          ],
+          "location2": ""
+        },
+        {
+          "id": "6jx1ojvk",
+          "date": "2026-11-22",
+          "location": "Montreal",
+          "hotel": null,
+          "flight": null,
+          "transports": [],
+          "activities": []
+        }
+      ],
+      "pax": 4
+    }
+  ],
+  "routeOptions": {},
+  "publishedAt": "2026-08-21T01:01:42.984Z"
+}
