@@ -725,7 +725,7 @@
               "id": "73hkjilp",
               "type": "flight",
               "from": "Sanya",
-              "to": "",
+              "to": "Shenzhen",
               "departTime": "18:40",
               "arriveTime": "20:25",
               "overnight": false,
@@ -999,5 +999,5 @@
     }
   ],
   "routeOptions": {},
-  "publishedAt": "2026-08-21T01:01:42.984Z"
+  "publishedAt": "2026-08-21T01:12:47.243Z"
 }
