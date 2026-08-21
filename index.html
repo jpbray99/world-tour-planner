@@ -281,8 +281,16 @@
     #main { min-height: 0; }
     #content { padding: 10px; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
     #view-calendar.active, #view-globe.active { flex: 1 1 0; height: auto; min-height: 0; }
-    /* 420px of minimum globe inside a ~500px slot forced the page to overflow again. */
-    #globeViz { min-height: 0; }
+    /* Locking the page killed the only scroller the globe view had, so anything below the
+       fold was simply unreachable -- no way even to check whether the globe was down there
+       (JP, 2026-08-20). The view scrolls itself now, and the globe goes FIRST, because on a
+       phone it is the entire point of the tab and the status card is not. */
+    #view-globe.active { overflow: auto; -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain; }
+    #view-globe.active > #globeViz { order: -1; flex: none; height: 58vh; min-height: 300px;
+      margin-bottom: 8px; }
+    /* Capped: 16 stops of route check must not be what fills a phone screen. */
+    #routeCheck { max-height: 132px; }
     #calWrap { flex: 1 1 0; max-height: none; min-height: 0; }
     /* Narrower day columns so ~3 fit on a phone, and the ruler stays slim. */
     #calGrid.timeline .day-col, #calGrid.timeline .add-day { width: 108px; }
@@ -451,8 +459,10 @@
   <input id="bridgeUrl" value="http://localhost:3100" />
   <label>Bridge token</label>
   <input id="bridgeToken" type="password" placeholder="from .mac-bridge/.env → MAC_BRIDGE_TOKEN" />
+  <!-- Readable, not masked: a pk. token is PUBLIC by design, and masking it meant JP could
+       not copy his own token to a second device. The bridge token above stays masked. -->
   <label>Mapbox public token (for the globe)</label>
-  <input id="mapboxToken" type="password" placeholder="pk.… — never an sk. token" />
+  <input id="mapboxToken" type="text" spellcheck="false" autocapitalize="off" placeholder="pk.… — never an sk. token" />
   <label>Move this trip between devices</label>
   <label class="row" style="font-weight:400;gap:7px">
     <input id="autoPublishInput" type="checkbox" style="width:auto" />
