@@ -337,7 +337,7 @@
     <div id="publishedUrl" class="muted"></div>
     <!-- The only gear was inside the assistant panel, which a phone hides outright, so
          nothing in settings could be reached from a phone at all. -->
-    <span id="settingsBtnTop" title="Settings">\u2699</span>
+    <span id="settingsBtnTop" title="Settings">&#9881;</span>
   </header>
 
   <div id="content">
@@ -355,7 +355,7 @@
             <option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option>
             <option>AUD</option><option>JPY</option><option>CHF</option>
           </select>
-          <div class="stat" id="totalStat"><b id="grandTotalInline">\u2014</b><span>trip total</span></div>
+          <div class="stat" id="totalStat"><b id="grandTotalInline">&mdash;</b><span>trip total</span></div>
         </div>
       </div>
       <div id="publishedBar" class="card row" style="display:none;gap:10px;align-items:center"></div>
@@ -3159,15 +3159,7 @@ async function publishTrip() {
     // Remember our own publish, or this device is immediately offered its own trip back.
     state.publishedAt = d.publishedAt; state.publishedUrl = d.url;
     localStorage.setItem(STORE_KEY, JSON.stringify(state));   // not save(): would re-arm the timer
-    // A device that cannot publish should say nothing about publishing at all -- least of all
-// offer the phone a link to the page the phone is already looking at.
-if (!canPublish()) {
-  ["publishState", "publishedUrl"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = "none";
-  });
-}
-showPublishedUrl();
+    showPublishedUrl();
     setPublishState("On your phone \u2014 " + new Date(d.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
     // Named plainly: this is the one state where the phone is showing something stale.
@@ -3182,6 +3174,22 @@ function showPublishedUrl() {
                + `${state.publishedUrl.replace(/^https:\/\//, "")}</a>`;
 }
 showPublishedUrl();
+
+// A device that cannot publish should say nothing about publishing at all -- least of all
+// offer the phone a link to the page the phone is already looking at.
+if (!canPublish()) {
+  ["publishState", "publishedUrl"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+}
+
+// Publishing only ever fired from save(), i.e. from an EDIT. So a fix that changes WHAT is
+// published -- the Mapbox token, say -- never reached the phone until JP happened to change
+// something about the trip itself, and "just reload" did nothing. Offer one publish shortly
+// after load: the bridge compares the trip without its timestamp and makes no commit when
+// nothing moved, so this is free on the ordinary path (JP, 2026-08-20).
+if (canPublish()) setTimeout(() => { if (tripHasDays(state)) scheduleAutoPublish(); }, 2500);
 
 // A pending autosave must not die with the tab -- send it immediately instead.
 window.addEventListener("beforeunload", () => {
