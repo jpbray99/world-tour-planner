@@ -379,7 +379,7 @@
           "date": "2026-10-18",
           "location": "Cairo",
           "hotel": {
-            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -424,7 +424,7 @@
           "date": "2026-10-19",
           "location": "Dubai",
           "hotel": {
-            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -450,7 +450,7 @@
           "date": "2026-10-20",
           "location": "Dubai",
           "hotel": {
-            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -477,7 +477,7 @@
           "date": "2026-10-21",
           "location": "Dubai",
           "hotel": {
-            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -1147,26 +1147,7 @@
           "flight": null,
           "activities": [],
           "location2": "",
-          "transports": [
-            {
-              "id": "khypfl0h",
-              "type": "flight",
-              "from": "Guilin",
-              "to": "Shanghai",
-              "departTime": "22:30",
-              "arriveTime": "00:40",
-              "overnight": true,
-              "price": 400,
-              "currency": "CAD",
-              "operator": "Air China (B)",
-              "business": true,
-              "businessPct": 50,
-              "booked": false,
-              "confirmation": "",
-              "reference": "",
-              "info": ""
-            }
-          ],
+          "transports": [],
           "food": 100
         },
         {
@@ -1200,7 +1181,26 @@
             "info": ""
           },
           "flight": null,
-          "transports": [],
+          "transports": [
+            {
+              "id": "khypfl0h",
+              "type": "flight",
+              "from": "Guilin",
+              "to": "Shanghai",
+              "departTime": "22:30",
+              "arriveTime": "00:40",
+              "overnight": true,
+              "price": 400,
+              "currency": "CAD",
+              "operator": "Air China (B)",
+              "business": true,
+              "businessPct": 50,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            }
+          ],
           "activities": []
         },
         {
@@ -1414,7 +1414,7 @@
           "date": "2026-11-23",
           "location": "Taipei",
           "hotel": {
-            "name": "Le Méridien Seoul, Myeongdong",
+            "name": "Le M\u00e9ridien Seoul, Myeongdong",
             "redEye": false,
             "price": 674,
             "currency": "CAD",
@@ -1448,7 +1448,7 @@
               "booked": false,
               "confirmation": "",
               "reference": "",
-              "info": "TSA–GMP"
+              "info": "TSA\u2013GMP"
             }
           ],
           "activities": [],
@@ -1459,7 +1459,7 @@
           "date": "2026-11-24",
           "location": "Taipei",
           "hotel": {
-            "name": "Le Méridien Seoul, Myeongdong",
+            "name": "Le M\u00e9ridien Seoul, Myeongdong",
             "redEye": false,
             "price": 674,
             "currency": "CAD",
@@ -1538,5 +1538,5 @@
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-08-26T17:25:27.504Z"
+  "publishedAt": "2026-08-26T17:26:04.268192Z"
 }
