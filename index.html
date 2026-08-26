@@ -750,7 +750,8 @@ function addDay() {
   const it = activeItin();
   const last = it.days[it.days.length - 1];
   const nextDate = last ? new Date(new Date(last.date).getTime() + 86400000) : new Date();
-  it.days.push({ id: uid(), date: nextDate.toISOString().slice(0, 10), location: last ? last.location : "", hotel: null, flight: null, activities: [] });
+  it.days.push({ id: uid(), date: nextDate.toISOString().slice(0, 10), location: last ? last.location : "",
+                 hotel: null, flight: null, transports: [], activities: [] });
   save(); renderCalendar();
 }
 
@@ -821,6 +822,48 @@ function readBizFields(prefix) {
   };
 }
 
+// Moving something to another date is really moving it to another DAY: the trip is a list
+// of days, and a leg's date IS the date of the day it sits on. Nothing carries a date of
+// its own, so there is no second copy that can drift out of step with the column it draws
+// in. The field picks a date; the record is re-parented (JP, 2026-08-26).
+function dayDateFieldHtml(prefix, day, it) {
+  const n = it.days.findIndex(d => d.id === day.id) + 1;
+  return `<label class="muted">Date <span id="${prefix}_dateDay" class="muted">(day ${n})</span></label>
+    <input id="${prefix}_date" type="date" value="${day.date}"
+           min="${it.days[0].date}" max="${it.days[it.days.length - 1].date}" />`;
+}
+
+// The day number updates as you pick, so a date outside the trip is obvious BEFORE saving
+// rather than as an error afterwards.
+function wireDayDateField(prefix, it) {
+  const el = document.getElementById(prefix + "_date");
+  const out = document.getElementById(prefix + "_dateDay");
+  if (!el || !out) return;
+  const sync = () => {
+    const i = it.days.findIndex(d => d.date === el.value);
+    out.textContent = i >= 0 ? `(day ${i + 1})` : "(no day on that date)";
+    out.style.color = i >= 0 ? "" : "var(--bad)";
+  };
+  el.addEventListener("change", sync);
+  el.addEventListener("input", sync);
+}
+
+// The day to save onto, or null when that date has no day. The trip is never silently
+// EXTENDED to make a date fit: days carry hotels, food, labels and a location, so
+// conjuring them into existence is a far bigger edit than the one being asked for.
+function resolveDayMove(prefix, it, day) {
+  const el = document.getElementById(prefix + "_date");
+  if (!el || !el.value || el.value === day.date) return day;
+  const target = it.days.find(d => d.date === el.value);
+  if (!target) {
+    alert(`This trip has no day on ${el.value}.\n\nIt runs ${it.days[0].date} to `
+        + `${it.days[it.days.length - 1].date}. Add the day first (right-click a day `
+        + `header \u2192 "Add a day"), then move this onto it.`);
+    return null;
+  }
+  return target;
+}
+
 function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
   const it = activeItin();
   const day = it.days.find(d => d.id === dayId);
@@ -847,6 +890,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
     const preOvernight = t.overnight !== undefined ? t.overnight
       : !!(t.departTime && t.arriveTime && t.arriveTime < t.departTime);
     body.innerHTML = `
+      ${dayDateFieldHtml("t", day, it)}
       <label class="muted">Type</label>
       <select id="t_type">${Object.entries(TRANSPORT_META).map(([k, m]) =>
         `<option value="${k}" ${(t.type || presetType || "flight") === k ? "selected" : ""}>${m.icon} ${m.label}</option>`).join("")}</select>
@@ -874,6 +918,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       ${bookingFieldsHtml("t", t, "Flight / train #")}
       ${bizFieldsHtml("t", t)}`;
     wireBizFields("t");
+    wireDayDateField("t", it);
     document.getElementById("t_calc").addEventListener("click", calcGroundTime);
     // The price question and the operator example both change with the mode, so they
     // follow the dropdown instead of being written once for flights and left wrong.
@@ -892,6 +937,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
     // whole dialog is reused and only the wording changes.
     const isMeal = kind === "meal";
     body.innerHTML = `
+      ${dayDateFieldHtml("a", day, it)}
       <label class="muted">${isMeal ? "Restaurant" : "What is it? (activity, dinner reservation, museum, tour…)"}</label>
       <input id="a_name" value="${a.name || ""}" placeholder="${isMeal ? "e.g. Tickets, Barcelona" : "e.g. Dinner at Tickets"}" />
       <div class="row">
@@ -915,6 +961,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       ${bizFieldsHtml("a", a)}`;
     document.getElementById("a_calc").addEventListener("click", () => calcVenueDriveTime(day.location));
     wireBizFields("a");
+    wireDayDateField("a", it);
   } else if (kind === "date") {
     body.innerHTML = `<label class="muted">Date for this day. Changing it shifts every LATER day by the same amount, so the trip stays in order.</label><input id="f_date" type="date" value="${day.date}" />`;
   } else if (kind === "location") {
@@ -1071,6 +1118,8 @@ document.getElementById("slotSave").addEventListener("click", async () => {
   const day = it.days.find(d => d.id === dlg.dataset.dayId);
   const kind = dlg.dataset.kind;
   if (kind === "transport") {
+    const target = resolveDayMove("t", it, day);
+    if (!target) return;                        // bad date: keep the dialog open
     day.transports = day.transports || [];
     const id = dlg.dataset.transportId;
     const to = document.getElementById("t_to").value.trim();
@@ -1093,19 +1142,34 @@ document.getElementById("slotSave").addEventListener("click", async () => {
       day.transports = day.transports.filter(x => x.id !== id); // wholly blank = delete
     } else if (!requireEnds("t")) {
       return;                                   // keep the dialog open on the empty field
-    } else if (id && id !== "legacy") {
+    } else if (id === "legacy") {
+      if (target.id === day.id) {
+        day.flight = { ...day.flight, ...rec };  // edit the legacy single-flight slot in place
+      } else {
+        // day.flight is a PROPERTY OF ITS DAY, so it cannot travel. Re-home it as an
+        // ordinary transport on the target and empty the old slot, rather than leaving a
+        // copy behind on both days.
+        target.transports = target.transports || [];
+        target.transports.push({ ...rec, id: uid() });
+        day.flight = null;
+      }
+    } else if (target.id === day.id) {
       const i = day.transports.findIndex(x => x.id === id);
       if (i >= 0) day.transports[i] = rec; else day.transports.push(rec);
-    } else if (id === "legacy") {
-      day.flight = { ...day.flight, ...rec }; // keep editing the legacy single-flight record in place
     } else {
-      day.transports.push(rec);
+      day.transports = day.transports.filter(x => x.id !== id);
+      target.transports = target.transports || [];
+      target.transports.push(rec);
     }
+    // "sets next day's location" follows the leg to wherever it landed, not the day the
+    // dialog happened to be opened from.
     if (to) {
-      const i2 = it.days.findIndex(d => d.id === day.id);
+      const i2 = it.days.findIndex(d => d.id === target.id);
       if (i2 >= 0 && i2 + 1 < it.days.length) it.days[i2 + 1].location = to;
     }
   } else if (kind === "activity" || kind === "meal") {
+    const target = resolveDayMove("a", it, day);
+    if (!target) return;                        // bad date: keep the dialog open
     day.activities = day.activities || [];
     const existingId = dlg.dataset.activityId;
     const name = document.getElementById("a_name").value.trim();
@@ -1124,6 +1188,10 @@ document.getElementById("slotSave").addEventListener("click", async () => {
     };
     if (!name && !rec.startTime) {
       day.activities = day.activities.filter(x => x.id !== existingId); // blank = delete
+    } else if (target.id !== day.id) {
+      day.activities = day.activities.filter(x => x.id !== existingId);
+      target.activities = target.activities || [];
+      target.activities.push(rec);
     } else if (existingId) {
       const i = day.activities.findIndex(x => x.id === existingId);
       if (i >= 0) day.activities[i] = rec; else day.activities.push(rec);
@@ -1608,25 +1676,91 @@ function clearLocationRange(dayId) {
   alert(`Cleared the location on ${n} day${n === 1 ? "" : "s"} (day ${start} to ${end}).`);
 }
 
-// Inserting a day pushes every later day one day later -- dates AND any hotel stay
-// dates, otherwise a stay would silently detach from the days it covers.
+// Stay runs as day-index ranges: the same NAMED hotel on consecutive days is ONE stay.
+// Unnamed rooms are never merged -- "" would group every blank one into a single stay.
+function stayRuns(it) {
+  const key = h => ((h && h.name) || "").trim().toLowerCase();
+  const runs = [];
+  for (let i = 0; i < it.days.length; i++) {
+    const h = it.days[i].hotel;
+    if (!h) continue;
+    let j = i;
+    if (!h.redEye && key(h)) {
+      while (j + 1 < it.days.length) {
+        const nx = it.days[j + 1].hotel;
+        if (!nx || nx.redEye || key(nx) !== key(h)) break;
+        j++;
+      }
+    }
+    runs.push({ first: i, last: j, hotels: it.days.slice(i, j + 1).map(d => d.hotel) });
+    i = j;
+  }
+  return runs;
+}
+
+// Adding or removing a day does one of two things to a stay, and the old code did neither:
+// it nudged each DAY's copy of the dates by a day, independently. Insert a day in the
+// MIDDLE of a stay and the back half's checkIn moved while the front half's did not, which
+// split one stay into two blocks whose dates disagreed and detached it from the nights it
+// covers (JP, 2026-08-26).
+//
+// A stay entirely after the change MOVES. A stay the new day falls INSIDE gains a night, so
+// only its checkOut moves. Deliberately NOT recomputed from the day dates: a stay can
+// legitimately start the day before the row it first appears on -- a 22:30 flight that
+// lands after midnight is checked in on the arrival date -- and recomputing would quietly
+// overwrite that as if it were drift.
+function shiftStaysForInsert(runs, at) {
+  runs.forEach(r => {
+    const straddles = r.first < at && at <= r.last;
+    r.hotels.forEach(h => {
+      if (!h) return;
+      if (r.first >= at && h.checkIn) h.checkIn = addDays(h.checkIn, 1);
+      if ((r.first >= at || straddles) && h.checkOut) h.checkOut = addDays(h.checkOut, 1);
+    });
+  });
+}
+
+// Deleting the run's FIRST day leaves checkIn correct on its own: the next day slides back
+// onto the deleted day's date. Only the night count drops.
+function shiftStaysForDelete(runs, idx) {
+  runs.forEach(r => {
+    const inside = r.first <= idx && idx <= r.last;
+    r.hotels.forEach(h => {
+      if (!h) return;
+      if (r.first > idx) {
+        if (h.checkIn) h.checkIn = addDays(h.checkIn, -1);
+        if (h.checkOut) h.checkOut = addDays(h.checkOut, -1);
+      } else if (inside && h.checkOut) {
+        h.checkOut = addDays(h.checkOut, -1);
+      }
+    });
+  });
+}
+
+// Inserting a day pushes every later day one day later. Everything ON those days -- legs,
+// activities, meals, food, the hotel -- travels with its day, because it is stored on the
+// day rather than carrying a date of its own; the stay dates are then recomputed.
 function insertDay(dayId, position) {
   const it = activeItin();
   const idx = it.days.findIndex(d => d.id === dayId);
   if (idx < 0) return;
   const at = position === "before" ? idx : idx + 1;
   const newDate = position === "before" ? it.days[idx].date : addDays(it.days[idx].date, 1);
+  const runs = stayRuns(it);          // measured BEFORE the splice, while the ranges still hold
   it.days.splice(at, 0, {
     id: uid(), date: newDate, location: it.days[idx].location,
     hotel: null, flight: null, transports: [], activities: [],
   });
-  for (let i = at + 1; i < it.days.length; i++) {
-    const d = it.days[i];
-    d.date = addDays(d.date, 1);
-    if (d.hotel) {
-      if (d.hotel.checkIn) d.hotel.checkIn = addDays(d.hotel.checkIn, 1);
-      if (d.hotel.checkOut) d.hotel.checkOut = addDays(d.hotel.checkOut, 1);
-    }
+  for (let i = at + 1; i < it.days.length; i++) it.days[i].date = addDays(it.days[i].date, 1);
+  shiftStaysForInsert(runs, at);
+  // A day inserted INSIDE a stay is still a night in the same room, so it inherits it.
+  // Without this the stay gains a night (correct) but leaves a hole in the middle of the
+  // days it covers, and draws as two blocks with a gap between them.
+  const prevH = at > 0 ? it.days[at - 1].hotel : null;
+  const nextH = at + 1 < it.days.length ? it.days[at + 1].hotel : null;
+  const nm = h => ((h && h.name) || "").trim().toLowerCase();
+  if (prevH && nextH && !prevH.redEye && !nextH.redEye && nm(prevH) && nm(prevH) === nm(nextH)) {
+    it.days[at].hotel = { ...prevH };
   }
   save(); renderCalendar();
 }
@@ -1638,15 +1772,10 @@ function deleteDay(dayId) {
   const d = it.days[idx];
   const busy = d.hotel || dayTransports(d).length || (d.activities || []).length;
   if (busy && !confirm("This day has a hotel, transport or activities on it. Delete it anyway?")) return;
+  const runs = stayRuns(it);          // measured BEFORE the splice, while the ranges still hold
   it.days.splice(idx, 1);
-  for (let i = idx; i < it.days.length; i++) {
-    const x = it.days[i];
-    x.date = addDays(x.date, -1);
-    if (x.hotel) {
-      if (x.hotel.checkIn) x.hotel.checkIn = addDays(x.hotel.checkIn, -1);
-      if (x.hotel.checkOut) x.hotel.checkOut = addDays(x.hotel.checkOut, -1);
-    }
-  }
+  for (let i = idx; i < it.days.length; i++) it.days[i].date = addDays(it.days[i].date, -1);
+  shiftStaysForDelete(runs, idx);
   save(); renderCalendar();
 }
 
