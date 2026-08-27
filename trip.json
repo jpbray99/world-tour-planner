@@ -1006,7 +1006,7 @@
         {
           "id": "ug4en6fj",
           "date": "2026-11-07",
-          "location": "Sanya",
+          "location": "Shenzhen",
           "hotel": {
             "name": "The Ritz-Carlton, Shenzhen",
             "redEye": false,
@@ -1202,7 +1202,7 @@
         {
           "id": "ufemsl1v",
           "date": "2026-11-13",
-          "location": "Shanghai",
+          "location": "Guilin",
           "hotel": null,
           "flight": null,
           "activities": [],
@@ -1213,29 +1213,32 @@
         {
           "id": "pyrzz7qp",
           "date": "2026-11-14",
-          "location": "Shanghai",
+          "location": "",
           "hotel": null,
           "flight": null,
           "transports": [],
-          "activities": []
+          "activities": [],
+          "location2": ""
         },
         {
           "id": "fr2w7hcs",
           "date": "2026-11-15",
-          "location": "Shanghai",
+          "location": "",
           "hotel": null,
           "flight": null,
           "transports": [],
-          "activities": []
+          "activities": [],
+          "location2": ""
         },
         {
           "id": "q3hklnw9",
           "date": "2026-11-16",
-          "location": "Shanghai",
+          "location": "",
           "hotel": null,
           "flight": null,
           "transports": [],
-          "activities": []
+          "activities": [],
+          "location2": ""
         },
         {
           "id": "zhinjoxl",
@@ -1535,7 +1538,7 @@
         {
           "id": "s3tgpvdb",
           "date": "2026-11-26",
-          "location": "Taipei",
+          "location": "Seoul",
           "hotel": {
             "name": "Le Méridien Seoul, Myeongdong",
             "redEye": false,
@@ -1606,7 +1609,26 @@
           "location": "Montreal",
           "hotel": null,
           "flight": null,
-          "transports": [],
+          "transports": [
+            {
+              "id": "2uz12rnk",
+              "type": "flight",
+              "from": "YVR",
+              "to": "YUL",
+              "departTime": "13:15",
+              "arriveTime": "17:00",
+              "overnight": false,
+              "price": 0,
+              "currency": "CAD",
+              "operator": "Air Canada",
+              "business": false,
+              "businessPct": 100,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            }
+          ],
           "activities": [],
           "food": 0
         }
@@ -1622,5 +1644,5 @@
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-08-27T18:18:24.891Z"
+  "publishedAt": "2026-08-27T18:29:16.965Z"
 }
