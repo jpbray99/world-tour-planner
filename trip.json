@@ -63,7 +63,24 @@
           "location": "Barcelona",
           "hotel": null,
           "flight": null,
-          "activities": [],
+          "activities": [
+            {
+              "id": "oix8m2i5",
+              "name": "Dinner at Tapeo",
+              "startTime": "18:30",
+              "endTime": "20:00",
+              "price": 1,
+              "currency": "CAD",
+              "operator": "",
+              "notes": "",
+              "business": false,
+              "businessPct": 100,
+              "booked": true,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            }
+          ],
           "food": 50
         },
         {
@@ -132,25 +149,7 @@
             "info": ""
           },
           "flight": null,
-          "food": 50,
-          "activities": [
-            {
-              "id": "oix8m2i5",
-              "name": "Dinner at Tapeo",
-              "startTime": "18:30",
-              "endTime": "20:00",
-              "price": 1,
-              "currency": "CAD",
-              "operator": "",
-              "notes": "",
-              "business": false,
-              "businessPct": 100,
-              "booked": true,
-              "confirmation": "",
-              "reference": "",
-              "info": ""
-            }
-          ]
+          "food": 50
         },
         {
           "id": "9dve402q",
@@ -379,7 +378,7 @@
           "date": "2026-10-18",
           "location": "Cairo",
           "hotel": {
-            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -424,7 +423,7 @@
           "date": "2026-10-19",
           "location": "Dubai",
           "hotel": {
-            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -450,7 +449,7 @@
           "date": "2026-10-20",
           "location": "Dubai",
           "hotel": {
-            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -477,7 +476,7 @@
           "date": "2026-10-21",
           "location": "Dubai",
           "hotel": {
-            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -1414,7 +1413,7 @@
           "date": "2026-11-23",
           "location": "Taipei",
           "hotel": {
-            "name": "Le M\u00e9ridien Seoul, Myeongdong",
+            "name": "Le Méridien Seoul, Myeongdong",
             "redEye": false,
             "price": 674,
             "currency": "CAD",
@@ -1448,7 +1447,7 @@
               "booked": false,
               "confirmation": "",
               "reference": "",
-              "info": "TSA\u2013GMP"
+              "info": "TSA–GMP"
             }
           ],
           "activities": [],
@@ -1459,7 +1458,7 @@
           "date": "2026-11-24",
           "location": "Taipei",
           "hotel": {
-            "name": "Le M\u00e9ridien Seoul, Myeongdong",
+            "name": "Le Méridien Seoul, Myeongdong",
             "redEye": false,
             "price": 674,
             "currency": "CAD",
@@ -1538,5 +1537,5 @@
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-08-26T17:26:04.268192Z"
+  "publishedAt": "2026-08-27T13:39:05.553Z"
 }
