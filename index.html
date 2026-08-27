@@ -2502,6 +2502,11 @@ async function updateGrandTotal() {
 // ---------- Live search (SerpApi via the Mac bridge) ----------
 // Never calls SerpApi directly from the browser -- see .mac-bridge/server.js for why
 // (SerpApi refuses CORS specifically to stop a client-side key from being exposed).
+// Same rule the bridge itself applies: a request that never leaves this machine is trusted
+// on its own, and only the tunnel demands a credential.
+const isLocalBridge = () =>
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test((state.bridgeUrl || "").trim());
+
 function bridgeHeaders() {
   // /flights, /hotels and /preview are token-free for local requests. Sending an empty
   // "Bearer " would be a malformed credential, so send nothing unless a token exists.
@@ -2894,8 +2899,14 @@ async function sendChat() {
   addMsg("user", text);
   const assistantEl = addMsg("assistant", "…");
 
-  if (!state.bridgeToken) {
-    assistantEl.textContent = "No bridge token set. Click ⚙ above and paste the token from .mac-bridge/.env (MAC_BRIDGE_TOKEN).";
+  // A bridge on THIS machine does not ask for a token, so the planner must not demand one
+  // either. It did, and the assistant was unusable on the laptop it runs on: the message
+  // sent JP off to paste a 48-character credential that would not even have worked, because
+  // the endpoint was CORS-blocked for a file:// page as well (JP, 2026-08-27). Only a remote
+  // bridge, reached through the tunnel, still needs it.
+  if (!state.bridgeToken && !isLocalBridge()) {
+    assistantEl.textContent = "This bridge is remote, so it needs a token. Click \u2699 above and "
+      + "paste the one from .mac-bridge/.env (MAC_BRIDGE_TOKEN).";
     return;
   }
 
