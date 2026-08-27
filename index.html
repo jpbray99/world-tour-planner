@@ -1997,24 +1997,90 @@ async function renderCalendar() {
 // which renders as a broken (hidden) image forever -- a refresh alone can never fix it
 // because the bad value is in storage, not in the view. Resolve those in place, once.
 let healingPhotos = false;
+// Does this URL actually return an image RIGHT NOW? The old test only asked whether it
+// LOOKED like one, and the photos Google Hotels hands back are signed and expire: the Sanya
+// EDITION, Atlantis Sanya and the Ritz-Carlton Shenzhen all matched /googleusercontent/,
+// all passed the look-alike test, and all three 403'd, so three hotel cards sat grey and
+// nothing ever tried to repair them (JP, 2026-08-26). A picture is either loading or it is
+// not; that is the only test worth running.
+function imageLoads(url) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const done = ok => { img.onload = img.onerror = null; resolve(ok); };
+    img.onload = () => done(img.naturalWidth > 1);
+    img.onerror = () => done(false);
+    img.src = url;
+    setTimeout(() => done(false), 8000);      // a hung request is a dead picture too
+  });
+}
+
+// Two records can be the "same" hotel with different names, so the match has to be strict:
+// substituting one property's photograph for another's is worse than showing no photograph.
+function sameHotelName(a, b) {
+  const norm = x => (x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const A = norm(a), B = norm(b);
+  if (!A || !B) return false;
+  return A === B || A.includes(B) || B.includes(A);
+}
+
+// Re-resolve from the hotel's own identity (its name and the nights booked) rather than
+// from the dead URL, which carries no information any more.
+async function refetchHotelPhoto(h) {
+  if (!h.name || !h.checkIn || !h.checkOut) return null;
+  const q = encodeURIComponent(h.name.trim());
+  const url = `${state.bridgeUrl}/hotels?q=${q}&checkIn=${h.checkIn}&checkOut=${h.checkOut}`
+            + `&currency=${state.homeCurrency}`;
+  const r = await fetch(url, { headers: bridgeHeaders() });
+  const d = await r.json();
+  const hit = (d.properties || []).find(p => p.photo && sameHotelName(h.name, p.name));
+  return hit ? hit.photo : null;              // no confident match: leave the card blank
+}
+
 async function healHotelPhotos() {
   if (healingPhotos) return;
   const isImg = (u) => /\.(jpg|jpeg|png|webp|gif|avif)(\?|$)/i.test(u) || /muscache|googleusercontent/i.test(u);
-  const broken = [];
+  const notAnImage = [], hotels = [];
   state.itineraries.forEach(it => (it.days || []).forEach(d => {
     const u = d.hotel && d.hotel.photoUrl;
-    if (u && /^https?:\/\//i.test(u) && !isImg(u)) broken.push(d.hotel);
+    if (!u || !/^https?:\/\//i.test(u)) return;
+    hotels.push(d.hotel);
+    if (!isImg(u)) notAnImage.push(d.hotel);
   }));
-  if (!broken.length) return;
+  if (!hotels.length) return;
   healingPhotos = true;
   let changed = false;
-  for (const h of broken) {
+
+  // A page URL saved where an image belongs: ask the bridge to read the photo off it.
+  for (const h of notAnImage) {
     try {
       const r = await fetch(state.bridgeUrl + "/preview?url=" + encodeURIComponent(h.photoUrl));
       const d = await r.json();
       if (d.image) { h.photoUrl = d.image; changed = true; }
     } catch (e) { /* bridge down: leave it, try again next render */ }
   }
+
+  // An image URL that no longer loads: re-resolve it by name. Deduped by name+dates so one
+  // stay spanning six days costs one lookup, not six.
+  const tried = new Set();
+  for (const h of hotels) {
+    if (notAnImage.includes(h)) continue;
+    const key = `${(h.name || "").toLowerCase()}|${h.checkIn}|${h.checkOut}`;
+    if (tried.has(key)) continue;
+    if (await imageLoads(h.photoUrl)) continue;
+    tried.add(key);
+    try {
+      const fresh = await refetchHotelPhoto(h);
+      if (!fresh) continue;
+      // Every day of the same stay carries its own copy of the record, so they all move.
+      state.itineraries.forEach(it => (it.days || []).forEach(d => {
+        if (d.hotel && `${(d.hotel.name || "").toLowerCase()}|${d.hotel.checkIn}|${d.hotel.checkOut}` === key) {
+          d.hotel.photoUrl = fresh;
+        }
+      }));
+      changed = true;
+    } catch (e) { /* bridge down or no key: the card stays blank, retried next render */ }
+  }
+
   healingPhotos = false;
   if (changed) { save(); renderCalendar(); }
 }
