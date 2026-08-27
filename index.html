@@ -284,6 +284,10 @@
   dialog select.cur { width: 96px; flex: none; }
   /* min-width:0 lets the price field shrink; without it the input's intrinsic width
      kept the pair from fitting on one line and the currency wrapped below. */
+  .fs-field { display: flex; flex-direction: column; min-width: 0; }
+  .fs-field > label { margin-top: 0; }
+  /* Airport codes read as codes without fighting the caret on every keystroke. */
+  .fs-leg input[data-fs="from"], .fs-leg input[data-fs="to"] { text-transform: uppercase; }
   dialog .field { display: flex; flex-direction: column; min-width: 0; }
   dialog .field > input, dialog .field > select { width: 100%; }
   dialog .field > label { margin-top: 0; }
@@ -360,7 +364,7 @@
     <h1>World Tour Planner</h1>
     <nav>
       <button data-view="calendar" class="active">Calendar</button>
-      <button data-view="options">Flight Options</button>
+      <button data-view="options">Search Flights</button>
       <button data-view="compare">Compare Itineraries</button>
       <button data-view="globe">Globe</button>
     </nav>
@@ -411,32 +415,35 @@
 
     <div class="view" id="view-options">
       <div class="card">
-        <h2>Search live flight prices <span class="muted">(via SerpApi/Google Flights — needs a free key, see ⚙)</span></h2>
+        <h2>Search flights <span class="muted">(via SerpApi/Google Flights — needs a free key, see ⚙)</span></h2>
         <div class="row">
-          <input id="fsFrom" placeholder="From airport code (YUL)" style="width:150px" maxlength="3" />
-          <input id="fsTo" placeholder="To airport code (NRT)" style="width:150px" maxlength="3" />
-          <input id="fsDate" type="date" />
-          <input id="fsReturnDate" type="date" placeholder="return (optional)" />
-          <button class="btn primary" id="fsSearchBtn">Search</button>
+          <div class="fs-field"><label class="muted">Trip</label>
+            <select id="fsType">
+              <option value="oneway">One-way</option>
+              <option value="round">Round trip</option>
+              <option value="multi">Multi-city</option>
+            </select></div>
+          <div class="fs-field"><label class="muted">Cabin</label>
+            <select id="fsCabin">
+              <option value="1">Economy</option>
+              <option value="2">Premium economy</option>
+              <option value="3">Business</option>
+              <option value="4">First</option>
+            </select></div>
+        </div>
+        <div id="fsLegs"></div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="fsAddLeg" type="button">+ Add city</button>
+          <button class="btn primary" id="fsSearchBtn" type="button">Search</button>
         </div>
         <div class="muted" style="margin-top:6px">Airport codes only (3 letters) — Google Flights doesn't take city names here.</div>
         <div id="fsResults" style="margin-top:10px"></div>
       </div>
-      <div class="card">
-        <h2>Add a flight price option manually</h2>
-        <div class="row">
-          <input id="optFrom" placeholder="From (e.g. Montreal)" />
-          <input id="optTo" placeholder="To (e.g. Tokyo)" />
-          <input id="optAirline" placeholder="Airline / notes" style="width:160px" />
-          <input id="optPrice" placeholder="Price" type="number" style="width:90px" />
-          <select id="optCurrency"><option>USD</option><option>CAD</option><option>EUR</option><option>GBP</option><option>AUD</option><option>JPY</option></select>
-          <input id="optDate" placeholder="Date / window" style="width:120px" />
-          <button class="btn primary" id="addOptBtn">Add option</button>
-        </div>
-      </div>
-      <div class="card">
-        <h2>All route options</h2>
-        <div id="optionsTableWrap"><div class="empty">No flight options yet — add one above.</div></div>
+      <!-- Hidden until a search has actually produced something worth keeping. Adding a
+           flight to the trip is a right-click on the calendar, not a form here (JP, 2026-08-27). -->
+      <div class="card" id="routeOptionsCard" style="display:none">
+        <h2>Saved from a search</h2>
+        <div id="optionsTableWrap"></div>
       </div>
     </div>
 
@@ -1065,7 +1072,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
     const inferredFrom = idx > 0 ? it.days[idx - 1].location : "";
     const inferredTo = day.location || "";
     body.innerHTML = `
-      <label class="muted">Pick a stored flight option (from Flight Options tab)</label>
+      <label class="muted">Pick a stored flight option (from the Search Flights tab)</label>
       <select id="f_pick"><option value="">— manual entry —</option>${options.map(o=>`<option value="${o.id}" ${f.optionId===o.id?"selected":""}>${o.from} → ${o.to}: ${o.airline||"?"} — ${money(o.price, o.currency)}</option>`).join("")}</select>
       <label class="muted">Or manual: airline / price / currency</label>
       <div class="row"><input id="f_air" placeholder="airline" value="${f.airline||""}" style="flex:1"/><input id="f_price" type="number" placeholder="price" value="${f.price != null ? f.price : ""}" style="width:90px"/><select id="f_cur">${["USD","CAD","EUR","GBP","AUD","JPY"].map(c=>`<option ${f.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
@@ -1843,8 +1850,16 @@ async function renderTripStats() {
   // the mileage. Both ends are required on new legs now, so this names the ones already
   // saved that way rather than leaving JP to find them by eye (JP, 2026-08-20).
   const holes = allLegs.filter(t => !(t.from || "").trim() || !(t.to || "").trim());
+  // "14 legs" says nothing about WHAT they are, and the list underneath is too long to
+  // count by eye. A tally by mode goes on top (JP, 2026-08-27).
+  const byMode = {};
+  allLegs.forEach(t => { const k = (TRANSPORT_META[t.type] || TRANSPORT_META.flight).label; byMode[k] = (byMode[k] || 0) + 1; });
+  const modeLine = Object.entries(byMode)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([k, n]) => `${k}: ${n}`).join("   ");
   const legsTitle = allLegs.length
-    ? (holes.length ? `\u26a0 ${holes.length} leg${holes.length === 1 ? " is" : "s are"} missing an end `
+    ? (modeLine ? modeLine + "\n\n" : "")
+      + (holes.length ? `\u26a0 ${holes.length} leg${holes.length === 1 ? " is" : "s are"} missing an end `
                     + `\u2014 open the day and fill it in:\n`
                     + holes.map(t => `   Day ${t._day}: ${t.from || "(nowhere)"} \u2192 ${t.to || "(nowhere)"}`).join("\n")
                     + "\n\n" : "")
@@ -2486,34 +2501,107 @@ function bridgeHeaders() {
   return state.bridgeToken ? { "Authorization": "Bearer " + state.bridgeToken } : {};
 }
 
+const CABIN_LABEL = { "1": "Economy", "2": "Premium economy", "3": "Business", "4": "First" };
+
+// A search is a question you are asking RIGHT NOW, not part of the trip, so it is held here
+// rather than in `state` -- persisting it would restore a stale query on every load. One-way
+// and round trip are ONE leg (a return DATE, not a second leg); only multi-city is a list.
+const FS = { legs: [{ from: "", to: "", date: "" }], returnDate: "" };
+
+const fsType = () => document.getElementById("fsType").value;
+
+function renderFsLegs() {
+  const type = fsType();
+  const wrap = document.getElementById("fsLegs");
+  if (type !== "multi") FS.legs = FS.legs.slice(0, 1);
+  else while (FS.legs.length < 2) FS.legs.push({ from: FS.legs[FS.legs.length - 1].to || "", to: "", date: "" });
+  wrap.innerHTML = FS.legs.map((l, i) => `
+    <div class="row fs-leg" style="margin-top:6px">
+      ${type === "multi" ? `<span class="muted" style="width:12px;text-align:right">${i + 1}</span>` : ""}
+      <input data-fs="from" data-i="${i}" value="${l.from}" placeholder="From (YUL)" maxlength="3" style="width:110px" />
+      <span class="muted">\u2192</span>
+      <input data-fs="to" data-i="${i}" value="${l.to}" placeholder="To (NRT)" maxlength="3" style="width:110px" />
+      <input data-fs="date" data-i="${i}" type="date" value="${l.date}" />
+      ${type === "round" && i === 0
+        ? `<span class="muted">back</span><input data-fs="ret" type="date" value="${FS.returnDate}" />` : ""}
+      ${type === "multi" && FS.legs.length > 2
+        ? `<button class="icon" data-fsdel="${i}" type="button" title="Remove this leg">\u2715</button>` : ""}
+    </div>`).join("");
+  // Stored raw and upper-cased only when the search is sent. Rewriting el.value on every
+  // keystroke to force upper case fights the caret; text-transform does it in CSS instead.
+  wrap.querySelectorAll("[data-fs]").forEach(el => el.addEventListener("input", () => {
+    if (el.dataset.fs === "ret") { FS.returnDate = el.value; return; }
+    FS.legs[Number(el.dataset.i)][el.dataset.fs] = el.value;
+  }));
+  wrap.querySelectorAll("[data-fsdel]").forEach(b => b.addEventListener("click", () => {
+    FS.legs.splice(Number(b.dataset.fsdel), 1);
+    renderFsLegs();
+  }));
+}
+
+document.getElementById("fsType").addEventListener("change", renderFsLegs);
+// Pressing + from one-way or round trip means "actually, this is a multi-city trip", so it
+// switches the mode rather than refusing. The dropdown moves with it, so nothing is hidden.
+document.getElementById("fsAddLeg").addEventListener("click", () => {
+  const sel = document.getElementById("fsType");
+  if (sel.value !== "multi") sel.value = "multi";
+  const last = FS.legs[FS.legs.length - 1];
+  FS.legs.push({ from: (last && last.to) || "", to: "", date: "" });
+  renderFsLegs();
+});
+
 async function searchFlights() {
-  const from = document.getElementById("fsFrom").value.trim().toUpperCase();
-  const to = document.getElementById("fsTo").value.trim().toUpperCase();
-  const date = document.getElementById("fsDate").value;
-  const returnDate = document.getElementById("fsReturnDate").value;
   const out = document.getElementById("fsResults");
-  if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to) || !date) {
-    out.innerHTML = '<div class="empty">Need 3-letter airport codes for both From and To, plus a date.</div>';
+  const type = fsType();
+  const cabin = document.getElementById("fsCabin").value;
+  const legs = FS.legs.map(l => ({
+    from: (l.from || "").trim().toUpperCase(),
+    to: (l.to || "").trim().toUpperCase(),
+    date: l.date,
+  }));
+  const bad = legs.findIndex(l => !/^[A-Z]{3}$/.test(l.from) || !/^[A-Z]{3}$/.test(l.to) || !l.date);
+  if (bad >= 0) {
+    out.innerHTML = `<div class="empty">${type === "multi" ? `Leg ${bad + 1} needs` : "Need"} `
+      + `two 3-letter airport codes and a date.</div>`;
     return;
   }
-  out.innerHTML = '<div class="empty">Searching…</div>';
+  if (type === "round" && !FS.returnDate) {
+    out.innerHTML = '<div class="empty">A round trip needs a return date.</div>';
+    return;
+  }
+  out.innerHTML = '<div class="empty">Searching\u2026</div>';
+  const qs = new URLSearchParams({ currency: state.homeCurrency, cabin });
+  if (type === "multi") qs.set("legs", JSON.stringify(legs));
+  else {
+    qs.set("from", legs[0].from); qs.set("to", legs[0].to); qs.set("date", legs[0].date);
+    if (type === "round") qs.set("returnDate", FS.returnDate);
+  }
   try {
-    const qs = new URLSearchParams({ from, to, date, ...(returnDate ? { returnDate } : {}) });
     const r = await fetch(state.bridgeUrl + "/flights?" + qs, { headers: bridgeHeaders() });
     const data = await r.json();
     if (data.error) { out.innerHTML = `<div class="empty">${data.error}</div>`; return; }
     if (!data.flights || !data.flights.length) { out.innerHTML = '<div class="empty">No results.</div>'; return; }
-    out.innerHTML = "";
+    // The route a saved option belongs to is the whole journey: first departure to final
+    // arrival. On a one-way that is just the one leg.
+    const routeFrom = legs[0].from, routeTo = legs[legs.length - 1].to;
+    const label = legs.map(l => `${l.from} \u2192 ${l.to}`).join(", ")
+      + (type === "round" ? ` and back ${FS.returnDate}` : "");
+    out.innerHTML = `<div class="muted" style="margin-bottom:6px">${CABIN_LABEL[cabin]} \u00b7 ${label}</div>`;
     data.flights.slice(0, 8).forEach(f => {
       const row = document.createElement("div");
       row.className = "row card";
       row.style.padding = "8px 10px";
-      row.innerHTML = `<div style="flex:1"><b>${money(f.price, data.currency)}</b> — ${f.airline} — ${f.stops === 0 ? "nonstop" : f.stops + " stop(s)"} — ${Math.round(f.duration/60)}h${f.duration%60}m</div>
-        <button class="btn primary" type="button">+ Add as option</button>`;
+      row.innerHTML = `<div style="flex:1"><b>${money(f.price, data.currency)}</b> \u2014 ${f.airline} `
+        + `\u2014 ${f.stops === 0 ? "nonstop" : f.stops + " stop(s)"} `
+        + `\u2014 ${Math.round(f.duration / 60)}h${f.duration % 60}m</div>
+        <button class="btn primary" type="button">+ Keep this option</button>`;
       row.querySelector("button").addEventListener("click", () => {
-        const key = routeKey(from, to);
+        const key = routeKey(routeFrom, routeTo);
         state.routeOptions[key] = state.routeOptions[key] || [];
-        state.routeOptions[key].push({ id: uid(), airline: f.airline, price: f.price, currency: data.currency, date });
+        state.routeOptions[key].push({
+          id: uid(), airline: f.airline, price: f.price, currency: data.currency,
+          date: legs[0].date, cabin: CABIN_LABEL[cabin],
+        });
         save(); renderOptions();
         row.style.opacity = "0.5";
       });
@@ -2524,6 +2612,7 @@ async function searchFlights() {
   }
 }
 document.getElementById("fsSearchBtn").addEventListener("click", searchFlights);
+renderFsLegs();
 
 // A pasted Airbnb/Booking/hotel-site URL is a PAGE, not an image. Resolve it to the
 // listing's own picture via the bridge's /preview (OpenGraph) -- the browser can't fetch
@@ -2681,34 +2770,23 @@ async function searchHotel(day) {
   }
 }
 
-// ---------- Flight Options ----------
-document.getElementById("addOptBtn").addEventListener("click", () => {
-  const from = document.getElementById("optFrom").value.trim();
-  const to = document.getElementById("optTo").value.trim();
-  const price = priceField("optPrice");
-  if (!from || !to || price == null) return alert("From, To and Price are required.");
-  const key = routeKey(from, to);
-  state.routeOptions[key] = state.routeOptions[key] || [];
-  state.routeOptions[key].push({
-    id: uid(), airline: document.getElementById("optAirline").value.trim(),
-    price, currency: document.getElementById("optCurrency").value,
-    date: document.getElementById("optDate").value.trim(),
-  });
-  save();
-  document.getElementById("optFrom").value = ""; document.getElementById("optTo").value = "";
-  document.getElementById("optAirline").value = ""; document.getElementById("optPrice").value = ""; document.getElementById("optDate").value = "";
-  renderOptions();
-});
-
+// ---------- Flight options kept from a search ----------
 function renderOptions() {
   const wrap = document.getElementById("optionsTableWrap");
+  const card = document.getElementById("routeOptionsCard");
   const keys = Object.keys(state.routeOptions).filter(k => state.routeOptions[k].length);
-  if (!keys.length) { wrap.innerHTML = '<div class="empty">No flight options yet — add one above.</div>'; return; }
+  // An empty table explaining that it is empty is just furniture. The card appears once
+  // there is something in it and disappears again when the last row is deleted.
+  if (card) card.style.display = keys.length ? "" : "none";
+  if (!keys.length) { wrap.innerHTML = ""; return; }
   let html = "<table><thead><tr><th>Route</th><th>Airline / notes</th><th>Price</th><th>Date</th><th></th></tr></thead><tbody>";
   keys.forEach(key => {
-    const [from, to] = key.split("||");
+    // routeKey lower-cases so one route matches whatever case it was typed in. Right for the
+    // KEY, wrong for the label: an airport code reads as a code.
+    const code = x => (/^[a-z]{3}$/.test(x) ? x.toUpperCase() : x);
+    const [from, to] = key.split("||").map(code);
     state.routeOptions[key].forEach(o => {
-      html += `<tr><td>${from} → ${to}</td><td>${o.airline || "—"}</td><td>${money(o.price, o.currency)}</td><td>${o.date || "—"}</td>
+      html += `<tr><td>${from} → ${to}</td><td>${o.airline || "—"}${o.cabin ? ` · ${o.cabin}` : ""}</td><td>${money(o.price, o.currency)}</td><td>${o.date || "—"}</td>
         <td><button class="icon" data-del="${key}|${o.id}">✕</button></td></tr>`;
     });
   });
