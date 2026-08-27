@@ -539,7 +539,9 @@ const STORE_KEY = "worldTourPlannerV1";
 // by the settlement gazetteer (which has never heard of it) and cached as a fuzzy guess.
 // The airport table now wins that case, but the cache is read BEFORE it, so without a bump
 // the fix would appear to do nothing at all.
-const GEO_CACHE_PREFIX = "mpvGeo4_";
+// Bumped to _5 on 2026-08-27: every code cached at its AIRFIELD would otherwise keep being
+// served, so BKK and Bangkok would stay two stops however the resolver behaves now.
+const GEO_CACHE_PREFIX = "mpvGeo5_";
 
 // Sits next to index.html so the GitHub Pages copy and a local file:// copy both find it.
 const REDEYE_IMG = "assets/redeye.jpg";
@@ -1913,7 +1915,11 @@ async function renderTripStats() {
   el.innerHTML =
     stat(it.days.length, "days") +
     stat(countries.size, countries.size === 1 ? "country" : "countries") +
-    stat(new Set(stops.filter(x => x.kind === "stay").map(x => x.name.toLowerCase())).size, "cities") +
+    // Counted by WHERE they are, not what they are called. By name, "BKK" and "Bangkok" are
+    // two cities and the globe numbers them as one -- two surfaces disagreeing about the
+    // same trip. The coordinate is the thing they actually share (JP, 2026-08-27).
+    stat(new Set(coords.filter(x => x.kind === "stay")
+                       .map(x => x.lng.toFixed(3) + "," + x.lat.toFixed(3))).size, "cities") +
     stat(mi(km), "miles", milesTitle) +
     (issues.length ? stat("\u26a0 " + issues.length, issues.length === 1 ? "route issue" : "route issues",
        "The route contradicts itself here, which is what inflates the mileage above. The "
@@ -3117,16 +3123,31 @@ async function nominatimPlace(raw) {
   return point;
 }
 
-async function geocode(name, kind) {
+async function geocode(name, kind, depth = 0) {
   const raw = (name || "").trim();
   if (!raw) return null;
   const key = geoCacheKey(raw, kind);
   const code = IATA_RE.test(raw) ? raw.toUpperCase() : null;
   const air = code ? airportByCode(code) : null;
-  // "BKK airport" is not a place anyone recognises at a glance; "Bangkok (BKK)" is. The
-  // table carries the city for exactly this (JP, 2026-08-27).
-  const fromTable = () => ({ lat: air.lat, lng: air.lng, countryCode: air.cc,
-                             display: air.city ? `${air.city} (${code})` : code + " airport" });
+  // An airport IS its city (JP, 2026-08-27). BKK and Bangkok are the same stop and must land
+  // on the same pin with the same number -- resolved to the airfield they were two stops 20
+  // miles apart, numbered twice on the globe with a hop drawn between them. So a code
+  // resolves through its CITY: the identical path the word "Bangkok" takes, which is what
+  // makes the two land on the same coordinate rather than merely a near one.
+  //
+  // The airfield stays as the fallback, for the 50-odd codes with no city recorded and for
+  // any city name the gazetteer cannot place -- a real coordinate beats none.
+  const fromAirfield = () => ({ lat: air.lat, lng: air.lng, countryCode: air.cc,
+                                display: air.city ? `${air.city} (${code})` : code + " airport" });
+  const fromTable = async () => {
+    // depth guard: a city name can itself be three letters (GOA is Genoa's code), and one
+    // expansion is all this ever needs.
+    if (air.city && depth < 1) {
+      const viaCity = await geocode(air.city, "stay", depth + 1);
+      if (viaCity && !viaCity.weak) return { ...viaCity, display: `${air.city} (${code})` };
+    }
+    return fromAirfield();
+  };
 
   // CONTEXT decides what three letters mean. On a transport leg they are an airport code --
   // that is how you type a flight. As a place you STAY they are a city: Goa, Kos, Hue, Nis,
@@ -3134,7 +3155,7 @@ async function geocode(name, kind) {
   // Cambodia) because the offline table answers instantly and looks authoritative.
   // The table still outranks the cache, which is what kept old bad coordinates alive.
   if (air && kind !== "stay") {
-    const point = fromTable();
+    const point = await fromTable();
     try { localStorage.setItem(key, JSON.stringify(point)); } catch (e) {}
     return point;
   }
@@ -3158,8 +3179,8 @@ async function geocode(name, kind) {
     // match for BKK, check the spelling" about three perfectly good airport codes
     // (JP, 2026-08-27). Let the EVIDENCE decide: an exact place match keeps the city, and a
     // merely-fuzzy one loses to a code the airport table knows for certain.
-    if (air && point && point.weak) point = fromTable();
-    if (!point && air) point = fromTable();
+    if (air && point && point.weak) point = await fromTable();
+    if (!point && air) point = await fromTable();
     if (!point) return null;
     localStorage.setItem(key, JSON.stringify(point));
     return point;
