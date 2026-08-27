@@ -240,7 +240,11 @@
   .bookmark { position: absolute; top: 2px; right: 3px; font-size: 10px; line-height: 1;
     color: #1e7e34; font-weight: 700; }
 
-  #ctxMenu { position: fixed; z-index: 999; background: var(--panel); border: 1px solid var(--border);
+  /* Above ALL the frozen furniture. At 999 it sat one below the sticky .day-head (1000),
+     which is exactly what a day-header right-click opens under -- so the first item, "Add a
+     day BEFORE this one", was painted over by the header and looked missing (JP, 2026-08-26).
+     Also above #wxTip (1200): a menu you deliberately opened outranks a hover tooltip. */
+  #ctxMenu { position: fixed; z-index: 1300; background: var(--panel); border: 1px solid var(--border);
     border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.16); padding: 4px; min-width: 178px; display: none; }
   #ctxMenu button { display: block; width: 100%; text-align: left; border: none; background: transparent;
     font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 5px; cursor: pointer; color: var(--ink); }
@@ -1612,8 +1616,11 @@ function openMenu(evt, items) {
   });
   menu.style.display = "block";
   const r = menu.getBoundingClientRect();
-  menu.style.left = Math.min(evt.clientX, window.innerWidth - r.width - 8) + "px";
-  menu.style.top = Math.min(evt.clientY, window.innerHeight - r.height - 8) + "px";
+  // Clamp on BOTH sides. With only an upper bound, a menu taller than the space below the
+  // pointer got a NEGATIVE top and opened off the top of the window -- the long
+  // add-something-at-this-time menu, right-clicked low in the grid, did exactly that.
+  menu.style.left = Math.max(8, Math.min(evt.clientX, window.innerWidth - r.width - 8)) + "px";
+  menu.style.top = Math.max(8, Math.min(evt.clientY, window.innerHeight - r.height - 8)) + "px";
 }
 
 // Right-click INSIDE the hour grid: everything that happens at a TIME, prefilled with
