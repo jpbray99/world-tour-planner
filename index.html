@@ -578,6 +578,7 @@ function loadState() {
   // also what puts the trip on a PUBLIC url, so it stays a visible, reversible choice.
   s.autoPublish = s.autoPublish !== false;
   s.mapboxToken = s.mapboxToken || "";
+  s.cleanFingerprint = s.cleanFingerprint || "";
   s.chatLog = s.chatLog || [];
   s.calendarView = "timeline"; // JP 2026-08-20: calendar/timeline view permanently, no toggle
   s.selectedDayId = s.selectedDayId || null;
@@ -3704,6 +3705,7 @@ async function publishTrip() {
     if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
     // Remember our own publish, or this device is immediately offered its own trip back.
     state.publishedAt = d.publishedAt; state.publishedUrl = d.url;
+    markTripClean();          // what is out there is now exactly what is in here
     localStorage.setItem(STORE_KEY, JSON.stringify(state));   // not save(): would re-arm the timer
     showPublishedUrl();
     setPublishState("On your phone \u2014 " + new Date(d.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
@@ -3804,6 +3806,7 @@ function applyPublishedTrip(d) {
   }
   state.activeItinId = state.itineraries[0].id;
   state.publishedAt = d.publishedAt || d.exportedAt || "";
+  markTripClean();          // this device now equals the published copy
   save();
   renderCalendar();
 }
@@ -3829,13 +3832,44 @@ function showPublishedUpdate(d, stamp) {
   bar.style.display = "";
 }
 
+// What a publish actually CARRIES. If this has not changed since the last time the device
+// took, or made, a published copy, then the device has no work of its own to protect.
+function tripFingerprint(st) {
+  const payload = JSON.stringify({ homeCurrency: st.homeCurrency, itineraries: st.itineraries,
+                                   routeOptions: st.routeOptions });
+  let h = 0x811c9dc5;
+  for (let i = 0; i < payload.length; i++) { h ^= payload.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36) + ":" + payload.length;
+}
+function markTripClean() { state.cleanFingerprint = tripFingerprint(state); }
+
+// A device that cannot publish is a VIEWER: the phone. Nothing it holds got there by any
+// route other than a publish, and anything typed into it could never reach the laptop
+// anyway. So a viewer with no fingerprint recorded yet counts as clean, which is what
+// spares JP one final tap on the device that was always the one tap behind.
+function tripIsClean() {
+  if (state.cleanFingerprint) return state.cleanFingerprint === tripFingerprint(state);
+  return !canPublish();
+}
+
 async function initPublishedTrip() {
   const d = await fetchPublishedTrip();
   if (!d) return;
   if (!tripHasDays(state)) { applyPublishedTrip(d); return; }
   const stamp = d.publishedAt || d.exportedAt || "";
-  if (stamp && stamp !== state.publishedAt) showPublishedUpdate(d, stamp);
+  if (!stamp || stamp === state.publishedAt) return;
+  // The confirm exists to protect UNPUBLISHED WORK. On a phone there never is any, so the
+  // phone sat permanently one tap behind the trip -- it had the newer copy in hand and asked
+  // permission to show it, on a banner nobody was looking for (JP, 2026-09-07). A device
+  // that has changed nothing has nothing to lose, so it just takes the newer copy.
+  if (tripIsClean()) { applyPublishedTrip(d); return; }
+  showPublishedUpdate(d, stamp);
 }
+
+// Checked ONCE, on load: a phone left open showed whatever had been published at the moment
+// it was opened, however long ago that was. Re-check while it is actually on screen.
+setInterval(() => { if (!document.hidden) initPublishedTrip(); }, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) initPublishedTrip(); });
 
 // ---------- init ----------
 renderChatLog();
