@@ -3195,6 +3195,29 @@ function flagEmoji(countryCode) {
   return String.fromCodePoint(...codePoints);
 }
 
+// "YUL" and "Montreal" are the same place. Until this knew that, day 1 -- labelled Montreal,
+// flying YUL -> BKK -- did not count as STARTING in Montreal, so the label was appended
+// AFTER Bangkok and the route read Montreal -> Bangkok -> Montreal -> Bangkok: 16,651 miles
+// of doubling back on a seven-day trip (JP, 2026-09-14). Resolving a code to its city fixed
+// the COORDINATES weeks ago; every comparison in here was still done on the raw strings.
+//
+// Synchronous on purpose: orderedStops runs on every render and cannot await a geocode. The
+// airport table is already in memory, so a code-to-city match costs nothing.
+const normPlace = x => (x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+function cityOfCode(x) {
+  const s = (x || "").trim();
+  if (!IATA_RE.test(s)) return null;
+  const a = airportByCode(s.toUpperCase());
+  return a && a.city ? normPlace(a.city) : null;
+}
+function samePlace(a, b) {
+  const A = normPlace(a), B = normPlace(b);
+  if (!A || !B) return false;
+  if (A === B) return true;
+  const ca = cityOfCode(a), cb = cityOfCode(b);
+  return (!!ca && ca === B) || (!!cb && cb === A) || (!!ca && ca === cb);
+}
+
 function orderedStops(it) {
   // Walk the trip in order and collect every place it actually touches. A CONNECTION city
   // is a real stop on the map even though no day is "spent" there: a Seoul -> Vancouver ->
@@ -3215,19 +3238,20 @@ function orderedStops(it) {
   it.days.forEach((d, i) => dayTransports(d).forEach(t => allLegs.push({ t, day: i })));
   const dwelt = new Set();
   allLegs.forEach((L, i) => {
-    const to = (L.t.to || "").trim().toLowerCase();
+    const to = normPlace(L.t.to);
     if (!to) return;
     const next = allLegs[i + 1];
-    if (!next || next.day > L.day) dwelt.add(to);
+    if (!next || next.day > L.day) { dwelt.add(to); const c = cityOfCode(L.t.to); if (c) dwelt.add(c); }
   });
   const stops = [];
   const push = (rawName, rawKind) => {
-    const name = rawName, kind = (rawKind === "via" && dwelt.has((rawName || "").trim().toLowerCase()))
-      ? "stay" : rawKind;
+    const cityForm = cityOfCode(rawName);
+    const name = rawName, kind = (rawKind === "via" &&
+        (dwelt.has(normPlace(rawName)) || (cityForm && dwelt.has(cityForm)))) ? "stay" : rawKind;
     const n = (name || "").trim();
     if (!n) return;
     const last = stops[stops.length - 1];
-    if (last && last.name.toLowerCase() === n.toLowerCase()) {
+    if (last && samePlace(last.name, n)) {
       // A place first seen as a transit waypoint and then confirmed as the day's location
       // is a real stay, not a via -- promote it instead of adding a second pin on top.
       if (kind === "stay") last.kind = "stay";
@@ -3235,7 +3259,7 @@ function orderedStops(it) {
     }
     stops.push({ name: n, kind });
   };
-  const same = (a, b) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
+  const same = samePlace;
   for (const day of it.days) {
     const legs = dayTransports(day);
     const loc = (day.location || "").trim();
@@ -3251,9 +3275,15 @@ function orderedStops(it) {
     // which is about 25,000 miles, was reporting nearly 60,000 (JP, 2026-08-20).
     const startsHere = legs.length && loc && legs.some(t => same(t.from, loc))
                                           && !legs.some(t => same(t.to, loc));
+    // A label that is ALREADY one of the day's leg endpoints is in the sequence: appending
+    // it again puts it AFTER every later leg. Day 7 is labelled Narita and flies BKK -> NRT
+    // -> YUL, so "Narita" landed after Montreal and the route flew home and back out again
+    // (JP, 2026-09-14). startsHere only ever caught a label that was a DEPARTURE; this
+    // catches the arrival case too.
+    const onALeg = legs.some(t => same(t.from, loc) || same(t.to, loc));
     if (startsHere) push(loc, "stay");
     for (const t of legs) { push(t.from, "via"); push(t.to, "via"); }
-    if (!startsHere) push(day.location, "stay");
+    if (!startsHere && !onALeg) push(day.location, "stay");
     push(day.location2, "stay");
   }
   return stops;
@@ -3359,8 +3389,8 @@ function routeIssues(it, points) {
       }
       // A travel day may be labelled with the city it STARTS in -- day 11 reads "Moraira"
       // and flies out of Valencia -- so only a label matching NEITHER end is wrong.
-      const ends = [legs[0].from, legs[legs.length - 1].to].map(e => (e || "").trim().toLowerCase());
-      if (l && label && !ends.includes(label.toLowerCase()) && here && mi(here, l) > GAP) {
+      const ends = [legs[0].from, legs[legs.length - 1].to];
+      if (l && label && !ends.some(e => samePlace(e, label)) && here && mi(here, l) > GAP) {
         add(n, `Day ${n} is labelled ${label}, but its own legs run ${legs[0].from} \u2192 `
              + `${legs[legs.length - 1].to} \u2014 ${near(mi(here, l))} mi from where the day ends.`);
       }
