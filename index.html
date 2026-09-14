@@ -1821,7 +1821,7 @@ async function renderTripStats() {
   const countries = new Set();
   const coords = [];
   for (const s of stops) {
-    const g = await geocode(s.name, s.kind);
+    const g = await geocode(s.name, s.fromLeg ? "via" : "stay");
     if (!g) continue;
     if (g.countryCode) countries.add(g.countryCode);
     // kind MUST be carried across. Without it every point arrived here as an undefined
@@ -3246,7 +3246,14 @@ function orderedStops(it) {
   const stops = [];
   const push = (rawName, rawKind) => {
     const cityForm = cityOfCode(rawName);
-    const name = rawName, kind = (rawKind === "via" &&
+    // `kind` says whether you SLEPT there, which is what earns a numbered pin. It must not
+    // also decide how the NAME is read: a leg endpoint promoted to a stay was then geocoded
+    // as a "where I am staying" string, and "SIN" stopped being Singapore and became Sin, a
+    // village in Aragon, Spain -- an exact match, so the airport table never got a say
+    // (JP, 2026-09-14). `fromLeg` keeps the origin of the string, which is the thing that
+    // decides whether three letters are a code.
+    const fromLeg = rawKind === "via";
+    const name = rawName, kind = (fromLeg &&
         (dwelt.has(normPlace(rawName)) || (cityForm && dwelt.has(cityForm)))) ? "stay" : rawKind;
     const n = (name || "").trim();
     if (!n) return;
@@ -3255,9 +3262,17 @@ function orderedStops(it) {
       // A place first seen as a transit waypoint and then confirmed as the day's location
       // is a real stay, not a via -- promote it instead of adding a second pin on top.
       if (kind === "stay") last.kind = "stay";
+      // A bare code that a later day LABELS with its city gives way to the city. The stop
+      // kept whichever spelling arrived first, so a leg's "SIN" outranked the "Singapore"
+      // JP typed on days 5 and 6 -- and "SIN" read as a stay is Sin, a village in Aragon,
+      // Spain. Taking the city name is both the better label and the safer string.
+      if (!fromLeg && IATA_RE.test(last.name.trim()) && !IATA_RE.test(n)) {
+        last.name = n;
+        last.fromLeg = false;
+      }
       return;
     }
-    stops.push({ name: n, kind });
+    stops.push({ name: n, kind, fromLeg });
   };
   const same = samePlace;
   for (const day of it.days) {
@@ -3337,8 +3352,21 @@ function routeIssues(it, points) {
       text: `"${p.name}" — no exact match, so its pin is a guess. Check the spelling.` });
   });
   const byName = new Map();
-  points.forEach(p => { const k = p.name.trim().toLowerCase(); if (!byName.has(k)) byName.set(k, p); });
-  const pt = n => byName.get((n || "").trim().toLowerCase());
+  // Indexed under the stop's own spelling AND the city of a code, because a leg says "BKK"
+  // while the stop it produced may now be named "Bangkok" -- a day label is allowed to
+  // rename a bare code. An exact-string lookup missed those and the walk stopped advancing,
+  // which invented "no leg has moved you" on legs that plainly exist (JP, 2026-09-14).
+  points.forEach(p => {
+    const k = normPlace(p.name); if (!byName.has(k)) byName.set(k, p);
+    const c = cityOfCode(p.name); if (c && !byName.has(c)) byName.set(c, p);
+  });
+  const pt = n => {
+    const k = normPlace(n);
+    if (byName.has(k)) return byName.get(k);
+    const c = cityOfCode(n);
+    if (c && byName.has(c)) return byName.get(c);
+    return points.find(p => samePlace(p.name, n));    // last resort, ~30 entries
+  };
   const mi = (a, b) => (a && b) ? haversineKm(a, b) * 0.621371 : 0;
   const near = d => Math.round(d).toLocaleString();
   // Dubai to Abu Dhabi is 87 miles: an airport transfer, not a mistake. Anything past this
@@ -3389,7 +3417,11 @@ function routeIssues(it, points) {
       }
       // A travel day may be labelled with the city it STARTS in -- day 11 reads "Moraira"
       // and flies out of Valencia -- so only a label matching NEITHER end is wrong.
-      const ends = [legs[0].from, legs[legs.length - 1].to];
+      // EVERY endpoint the day touches, not just the first departure and last arrival. Day 7
+      // flies SIN -> NRT -> YUL and is labelled Narita, where nine hours are actually spent;
+      // calling that wrong because it is neither end of the day is pedantry, and it also
+      // disagreed with orderedStops, which already accepts any endpoint (JP, 2026-09-14).
+      const ends = legs.flatMap(t => [t.from, t.to]);
       if (l && label && !ends.some(e => samePlace(e, label)) && here && mi(here, l) > GAP) {
         add(n, `Day ${n} is labelled ${label}, but its own legs run ${legs[0].from} \u2192 `
              + `${legs[legs.length - 1].to} \u2014 ${near(mi(here, l))} mi from where the day ends.`);
@@ -3470,7 +3502,7 @@ async function renderGlobe() {
 
   const resolved = [], failed = [];
   for (const s of stops) {
-    const g = await geocode(s.name, s.kind);
+    const g = await geocode(s.name, s.fromLeg ? "via" : "stay");
     if (g) resolved.push({ ...g, name: s.name, kind: s.kind }); else failed.push(s.name);
   }
   if (!resolved.length) {
