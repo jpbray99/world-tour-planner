@@ -410,7 +410,7 @@
           "date": "2026-10-18",
           "location": "Cairo",
           "hotel": {
-            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -455,7 +455,7 @@
           "date": "2026-10-19",
           "location": "Dubai",
           "hotel": {
-            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -481,7 +481,7 @@
           "date": "2026-10-20",
           "location": "Dubai",
           "hotel": {
-            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -508,7 +508,7 @@
           "date": "2026-10-21",
           "location": "Dubai",
           "hotel": {
-            "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
+            "name": "Le M\u00e9ridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
             "price": 472,
             "currency": "USD",
@@ -1486,7 +1486,7 @@
           "date": "2026-11-21",
           "location": "Taipei",
           "hotel": {
-            "name": "Le Méridien Seoul, Myeongdong",
+            "name": "Le M\u00e9ridien Seoul, Myeongdong",
             "redEye": false,
             "price": 674,
             "currency": "CAD",
@@ -1520,7 +1520,7 @@
               "booked": false,
               "confirmation": "",
               "reference": "",
-              "info": "TSA–GMP"
+              "info": "TSA\u2013GMP"
             }
           ],
           "activities": [],
@@ -1531,7 +1531,7 @@
           "date": "2026-11-22",
           "location": "Seoul",
           "hotel": {
-            "name": "Le Méridien Seoul, Myeongdong",
+            "name": "Le M\u00e9ridien Seoul, Myeongdong",
             "redEye": false,
             "price": 674,
             "currency": "CAD",
@@ -1711,8 +1711,8 @@
             {
               "id": "4w56hwk7",
               "type": "flight",
-              "from": "SIN",
-              "to": "BKK",
+              "from": "BKK",
+              "to": "SIN",
               "departTime": "21:50",
               "arriveTime": "22:10",
               "overnight": false,
@@ -1778,7 +1778,7 @@
             {
               "id": "w35c25d3",
               "type": "flight",
-              "from": "BKK",
+              "from": "SIN",
               "to": "NRT",
               "departTime": "00:50",
               "arriveTime": "08:10",
@@ -1803,5 +1803,5 @@
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-09-14T17:14:49.816Z"
+  "publishedAt": "2026-09-14T17:15:47.598404Z"
 }
