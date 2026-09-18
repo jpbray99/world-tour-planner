@@ -384,6 +384,10 @@
            Split across two justified groups they wrapped into a block that ate the calendar
            on a phone, and the total was only in the header, which mobile hides. -->
       <div class="card" id="statsBar">
+        <div class="row" id="tripPick" style="flex:none">
+          <label class="muted">Trip</label>
+          <select id="calItinSelect" title="Switch itinerary"></select>
+        </div>
         <div class="row" id="tripStats"></div>
         <div class="row" id="tripControls">
           <label class="muted">Travelers</label>
@@ -697,18 +701,20 @@ function dayPositionBar(hhmm, label) {
 }
 
 function renderItinSelect() {
-  const sel = document.getElementById("itinSelect");
-  sel.innerHTML = "";
-  state.itineraries.forEach(i => {
-    const o = document.createElement("option");
-    o.value = i.id; o.textContent = i.name;
-    if (i.id === state.activeItinId) o.selected = true;
-    sel.appendChild(o);
+  ["itinSelect", "calItinSelect"].forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = "";
+    state.itineraries.forEach(i => {
+      const o = document.createElement("option");
+      o.value = i.id; o.textContent = i.name;
+      if (i.id === state.activeItinId) o.selected = true;
+      sel.appendChild(o);
+    });
   });
 }
-document.getElementById("itinSelect").addEventListener("change", e => {
-  state.activeItinId = e.target.value; save(); renderCalendar();
-});
+["itinSelect", "calItinSelect"].forEach(id => document.getElementById(id).addEventListener("change", e => {
+  state.activeItinId = e.target.value; save(); renderItinSelect(); renderCalendar();
+}));
 document.getElementById("newItinBtn").addEventListener("click", () => {
   const name = prompt("Name this itinerary (e.g. 'Plan B — Oceania first')");
   if (!name) return;
@@ -2851,6 +2857,12 @@ async function renderCompare() {
         <div style="font-size:18px;font-weight:700">${r.total.toLocaleString(undefined,{style:"currency",currency:state.homeCurrency})}</div>
         ${r.missing ? `<div class="muted" style="color:var(--warn)">⚠ ${r.missing} price(s) missing an FX rate or unpriced</div>` : ""}
       </div>`;
+    card.style.cursor = "pointer";
+    card.title = "Open this itinerary in the Calendar";
+    card.addEventListener("click", () => {
+      state.activeItinId = r.it.id; save(); renderItinSelect(); renderCalendar();
+      document.querySelector('nav button[data-view="calendar"]').click();
+    });
     wrap.appendChild(card);
   });
   if (!results.length) wrap.innerHTML = '<div class="empty">No itineraries yet.</div>';
