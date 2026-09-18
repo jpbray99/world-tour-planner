@@ -1881,9 +1881,15 @@
         }
       ],
       "pax": 1
+    },
+    {
+      "id": "196wdkpp",
+      "name": "Asia (No Phuket, no Hong Kong)",
+      "days": [],
+      "pax": 4
     }
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-09-18T23:04:53.931Z"
+  "publishedAt": "2026-09-18T23:09:47.775Z"
 }
