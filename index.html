@@ -104,11 +104,14 @@
   #routeCheck .where { color: var(--ink-dim); }
   #routeCheck .odd { background: var(--bad-dim); color: var(--bad); font-weight: 600;
     border-radius: 4px; padding: 0 4px; }
-  #statsBar { display: flex; align-items: center; flex-wrap: nowrap; gap: 10px;
-    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  #statsBar::-webkit-scrollbar { display: none; }
-  #statsBar > .row { flex: 0 0 auto; flex-wrap: nowrap; }
-  #tripControls { margin-left: auto; gap: 8px; }
+  #statsBar { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+  #tripControls { gap: 8px; }
+  #tripControls #totalStat { margin-left: auto; border-right: none; }
+  #tripStats { gap: 0; row-gap: 6px; }
+  #tripStats .stat { padding: 0 7px; }
+  #tripStats .stat span { font-size: 9px; letter-spacing: .02em; }
+  #calItinSelect { max-width: 150px; }
+  #tripStats .stat:first-child { padding-left: 0; }
   #totalStat b { color: var(--accent); }
   .stat b { font-size: 15px; line-height: 1.1; }
   .stat span { font-size: 9.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .04em; }
@@ -338,13 +341,11 @@
     #chat { display: none; }
     #settingsBtnTop { display: inline; margin-left: auto; }
     header h1 { display: none; }
-    /* Stats stay on ONE line and scroll sideways. Wrapping turned eight of them into a
-       four-row block that pushed the calendar off the screen. */
-    /* The band is one scrolling line, so it only needs the height of its tallest control. */
-    #statsBar { padding: 8px 10px; gap: 8px; }
-    #tripStats .stat, #tripControls > * { flex: 0 0 auto; }
-    /* Nothing is pushed to the far edge on a phone -- it just runs on and scrolls. */
-    #tripControls { margin-left: 0; }
+    /* Stats wrap under the trip picker rather than scrolling sideways, so every figure and the
+       trip total are visible at once (JP, 2026-09-18). The tiles are kept slim to hold it to two rows. */
+    #statsBar { padding: 8px 10px; gap: 6px; }
+    #tripStats .stat { flex: 0 0 auto; }
+    #tripControls { flex-wrap: wrap; }
     #paxInput { width: 44px; }
     dialog { width: calc(100vw - 24px); max-height: 88vh; overflow-y: auto; }
     /* Comfortable tap targets -- 16px input font also stops iOS zooming on focus. */
@@ -380,16 +381,12 @@
 
   <div id="content">
     <div class="view active" id="view-calendar">
-      <!-- Stats, travellers, currency and the trip total are ONE band that scrolls sideways.
-           Split across two justified groups they wrapped into a block that ate the calendar
-           on a phone, and the total was only in the header, which mobile hides. -->
+      <!-- Row 1: trip picker, travellers, currency. Row 2: the stats and the trip total, wrapping
+           rather than scrolling so nothing is hidden off the edge. -->
       <div class="card" id="statsBar">
-        <div class="row" id="tripPick" style="flex:none">
+        <div class="row" id="tripControls">
           <label class="muted">Trip</label>
           <select id="calItinSelect" title="Switch itinerary"></select>
-        </div>
-        <div class="row" id="tripStats"></div>
-        <div class="row" id="tripControls">
           <label class="muted">Travelers</label>
           <input id="paxInput" type="number" min="1" step="1" style="width:52px" title="Ticket prices are per person and get multiplied by this in the budget total; hotel prices are per room and don't." />
           <label class="muted">Home currency</label>
@@ -399,6 +396,7 @@
           </select>
           <div class="stat" id="totalStat"><b id="grandTotalInline">&mdash;</b><span>trip total</span></div>
         </div>
+        <div class="row" id="tripStats"></div>
       </div>
       <div id="publishedBar" class="card row" style="display:none;gap:10px;align-items:center"></div>
       <div id="emptyTrip" class="card" style="display:none">
@@ -1888,7 +1886,6 @@ async function renderTripStats() {
   const nights = it.days.filter(d => d.hotel && !d.hotel.redEye).length;
   const bnbNights = it.days.filter(d => isAirbnb(d.hotel) && !d.hotel.redEye).length;
   const hotelNights = nights - bnbNights;
-  const acts = it.days.reduce((n, d) => n + (d.activities || []).length, 0);
   // Cost per day. A grand total for a round-the-world trip is a number nobody has any feel
   // for -- $31k could be thrifty or reckless and you cannot tell by looking at it. Divided
   // by the days it buys, it turns into a rate you can judge against a normal week away, and
@@ -1939,7 +1936,6 @@ async function renderTripStats() {
     stat(hotelNights, hotelNights === 1 ? "hotel night" : "hotel nights") +
     stat(bnbNights, bnbNights === 1 ? "rental night" : "rental nights") +
     (redEyeNights ? stat(redEyeNights, redEyeNights === 1 ? "red-eye" : "red-eyes") : "") +
-    stat(acts, acts === 1 ? "activity" : "activities") +
     (it.days.length ? stat((money.missing ? "\u26a0 " : "") + cur(perDay), "cost/day", perDayTip,
                            money.missing ? "bad" : "") : "");
 }
