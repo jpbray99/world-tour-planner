@@ -2555,16 +2555,16 @@
           "food": 100,
           "transports": [
             {
-              "id": "q9mekegm",
+              "id": "ayr0d0hs",
               "type": "flight",
-              "from": "HKG",
-              "to": "SYX",
-              "departTime": "08:45",
-              "arriveTime": "10:30",
+              "from": "BKK",
+              "to": "SZX",
+              "departTime": "12:10",
+              "arriveTime": "15:55",
               "overnight": false,
-              "price": 125,
+              "price": 210,
               "currency": "CAD",
-              "operator": "Hong Kong Express",
+              "operator": "",
               "business": false,
               "businessPct": 100,
               "booked": false,
@@ -2577,7 +2577,7 @@
         {
           "id": "apacyygw",
           "date": "2026-10-27",
-          "location": "SYX",
+          "location": "SZX",
           "hotel": {
             "name": "The Sanya EDITION",
             "redEye": false,
@@ -2650,12 +2650,32 @@
           "flight": null,
           "activities": [],
           "location2": "",
-          "food": 100
+          "food": 100,
+          "transports": [
+            {
+              "id": "plz7gsfw",
+              "type": "train",
+              "from": "Shenzhen",
+              "to": "Guangzhou",
+              "departTime": "10:15",
+              "arriveTime": "10:45",
+              "overnight": false,
+              "price": 30,
+              "currency": "USD",
+              "operator": "",
+              "business": true,
+              "businessPct": 50,
+              "booked": false,
+              "confirmation": "",
+              "reference": "",
+              "info": ""
+            }
+          ]
         },
         {
           "id": "ge7z3tq7",
           "date": "2026-10-30",
-          "location": "Sanya",
+          "location": "Guangzhou",
           "hotel": {
             "name": "The Ritz-Carlton, Shenzhen",
             "redEye": false,
@@ -2676,26 +2696,7 @@
           "flight": null,
           "activities": [],
           "location2": "",
-          "transports": [
-            {
-              "id": "73hkjilp",
-              "type": "flight",
-              "from": "Sanya",
-              "to": "Shenzhen",
-              "departTime": "18:40",
-              "arriveTime": "20:25",
-              "overnight": false,
-              "price": 200,
-              "currency": "CAD",
-              "operator": "Shenzhen",
-              "business": false,
-              "businessPct": 100,
-              "booked": false,
-              "confirmation": "",
-              "reference": "",
-              "info": ""
-            }
-          ],
+          "transports": [],
           "food": 100
         },
         {
@@ -2774,26 +2775,7 @@
           "flight": null,
           "activities": [],
           "location2": "Guangzhou",
-          "transports": [
-            {
-              "id": "plz7gsfw",
-              "type": "train",
-              "from": "Shenzhen",
-              "to": "Guangzhou",
-              "departTime": "10:15",
-              "arriveTime": "10:45",
-              "overnight": false,
-              "price": 30,
-              "currency": "USD",
-              "operator": "",
-              "business": true,
-              "businessPct": 50,
-              "booked": false,
-              "confirmation": "",
-              "reference": "",
-              "info": ""
-            }
-          ],
+          "transports": [],
           "food": 125
         },
         {
@@ -2846,26 +2828,7 @@
           "flight": null,
           "activities": [],
           "location2": "",
-          "transports": [
-            {
-              "id": "b4ipr3xl",
-              "type": "train",
-              "from": "Guangzhou",
-              "to": "Guilin",
-              "departTime": "12:25",
-              "arriveTime": "14:28",
-              "overnight": false,
-              "price": 40,
-              "currency": "USD",
-              "operator": "First Class",
-              "business": true,
-              "businessPct": 50,
-              "booked": false,
-              "confirmation": "",
-              "reference": "",
-              "info": ""
-            }
-          ],
+          "transports": [],
           "food": 125
         },
         {
@@ -3292,5 +3255,5 @@
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-09-18T23:27:48.156Z"
+  "publishedAt": "2026-09-18T23:45:00.811Z"
 }
