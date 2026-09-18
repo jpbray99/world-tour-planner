@@ -458,7 +458,7 @@
           <select id="itinSelect"></select>
           <button class="btn" id="newItinBtn">+ New itinerary</button>
         </div>
-        <button class="btn" id="dupItinBtn">Duplicate current itinerary to compare a re-order</button>
+        <button class="btn" id="dupItinBtn">Duplicate current itinerary</button>
       </div>
       <div id="compareList"></div>
     </div>
@@ -2825,15 +2825,32 @@ function renderOptions() {
 }
 
 // ---------- Compare ----------
-document.getElementById("dupItinBtn").addEventListener("click", () => {
-  const src = activeItin();
-  const name = prompt("Name this alternate ordering", src.name + " (reorder)");
+function duplicateItin(src) {
+  const name = prompt("Name the copy", src.name + " (copy)");
   if (!name) return;
-  const copy = { id: uid(), name, days: JSON.parse(JSON.stringify(src.days)), pax: src.pax || 1 };
+  // Deep copy of everything the itinerary carries: days, flights, hotels, cars, activities, prices.
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = uid();
+  copy.name = name;
   state.itineraries.push(copy);
-  save(); renderItinSelect();
-  alert("Duplicated. Go to Calendar, switch to it, and reorder by editing each day's location — or re-add days in the new order you want to test.");
-});
+  state.activeItinId = copy.id;
+  save(); renderItinSelect(); renderCalendar(); renderCompare();
+}
+function renameItin(it) {
+  const name = prompt("Rename itinerary", it.name);
+  if (!name || name === it.name) return;
+  it.name = name;
+  save(); renderItinSelect(); renderCompare();
+}
+function deleteItin(it) {
+  if (state.itineraries.length <= 1) { alert("You need at least one itinerary, so this one can't be deleted."); return; }
+  const n = (it.days || []).length;
+  if (!confirm(`Delete "${it.name}"${n ? ` and its ${n} days` : ""}? This can't be undone.`)) return;
+  state.itineraries = state.itineraries.filter(i => i.id !== it.id);
+  if (state.activeItinId === it.id) state.activeItinId = state.itineraries[0].id;
+  save(); renderItinSelect(); renderCalendar(); renderCompare();
+}
+document.getElementById("dupItinBtn").addEventListener("click", () => duplicateItin(activeItin()));
 
 async function renderCompare() {
   const wrap = document.getElementById("compareList");
@@ -2857,6 +2874,16 @@ async function renderCompare() {
         <div style="font-size:18px;font-weight:700">${r.total.toLocaleString(undefined,{style:"currency",currency:state.homeCurrency})}</div>
         ${r.missing ? `<div class="muted" style="color:var(--warn)">⚠ ${r.missing} price(s) missing an FX rate or unpriced</div>` : ""}
       </div>`;
+    const acts = document.createElement("div");
+    acts.className = "row";
+    acts.style.cssText = "gap:6px;margin-top:8px;justify-content:flex-end";
+    [["Duplicate", () => duplicateItin(r.it)], ["Rename", () => renameItin(r.it)], ["Delete", () => deleteItin(r.it)]].forEach(([label, fn]) => {
+      const bt = document.createElement("button");
+      bt.className = "btn"; bt.type = "button"; bt.textContent = label;
+      bt.addEventListener("click", ev => { ev.stopPropagation(); fn(); });
+      acts.appendChild(bt);
+    });
+    card.lastElementChild.appendChild(acts);
     card.style.cursor = "pointer";
     card.title = "Open this itinerary in the Calendar";
     card.addEventListener("click", () => {
