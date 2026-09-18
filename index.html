@@ -528,6 +528,7 @@
   </div>
 </dialog>
 
+<script src="patches.js"></script>
 <script>
 "use strict";
 const STORE_KEY = "worldTourPlannerV1";
@@ -552,6 +553,7 @@ const fxMem = { USD: 1 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
+let patchesApplied = false;
 function loadState() {
   let s;
   try { s = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { s = null; }
@@ -584,6 +586,16 @@ function loadState() {
   s.chatLog = s.chatLog || [];
   s.calendarView = "timeline"; // JP 2026-08-20: calendar/timeline view permanently, no toggle
   s.selectedDayId = s.selectedDayId || null;
+  // patches.js edits made for this browser's copy; each id runs once, then the app saves.
+  s.appliedPatches = s.appliedPatches || [];
+  (window.TRIP_PATCHES || []).forEach(p => {
+    if (s.appliedPatches.includes(p.id)) return;
+    let done = false;
+    try { done = p.run(s, { uid }) === true; } catch (e) { console.error("patch failed", p.id, e); }
+    if (!done) return;
+    patchesApplied = true;
+    s.appliedPatches.push(p.id);
+  });
   return s;
 }
 let state = loadState();
@@ -3969,6 +3981,7 @@ setInterval(() => { if (!document.hidden) initPublishedTrip(); }, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) initPublishedTrip(); });
 
 // ---------- init ----------
+if (patchesApplied) save();
 renderChatLog();
 renderCalendar();
 initPublishedTrip();
