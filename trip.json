@@ -2386,7 +2386,7 @@
             "photoPos": 50,
             "business": false,
             "businessPct": 100,
-            "booked": false,
+            "booked": true,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -2406,7 +2406,7 @@
               "operator": "Egypt AIr",
               "business": true,
               "businessPct": 50,
-              "booked": false,
+              "booked": true,
               "confirmation": "ZVTDCT",
               "reference": "",
               "info": "Premium Economy"
@@ -2418,7 +2418,7 @@
         {
           "id": "yh7dw8xd",
           "date": "2026-10-21",
-          "location": "Rome",
+          "location": "Cairo",
           "hotel": {
             "name": "The Nile Ritz-Carlton, Cairo",
             "redEye": false,
@@ -2431,7 +2431,7 @@
             "photoPos": 50,
             "business": false,
             "businessPct": 100,
-            "booked": false,
+            "booked": true,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -2455,7 +2455,7 @@
             "photoPos": 50,
             "business": false,
             "businessPct": 100,
-            "booked": false,
+            "booked": true,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -2481,7 +2481,7 @@
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
-            "booked": false,
+            "booked": true,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -2502,7 +2502,7 @@
               "operator": "Emirates (E)",
               "business": true,
               "businessPct": 50,
-              "booked": false,
+              "booked": true,
               "confirmation": "",
               "reference": "",
               "info": ""
@@ -2513,7 +2513,7 @@
         {
           "id": "44bc1vx7",
           "date": "2026-10-24",
-          "location": "Cairo",
+          "location": "Dubai",
           "hotel": {
             "name": "Le Méridien Mina Seyahi Beach Resort & Waterpark",
             "redEye": false,
@@ -2526,7 +2526,7 @@
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
-            "booked": false,
+            "booked": true,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -2552,7 +2552,7 @@
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
-            "booked": false,
+            "booked": true,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -2991,23 +2991,7 @@
           "id": "9187i9pw",
           "date": "2026-11-08",
           "location": "Guilin",
-          "hotel": {
-            "name": "LS hotel",
-            "redEye": false,
-            "price": 500,
-            "currency": "CAD",
-            "photoUrl": "https://ak-d.tripcdn.com/images/1mc5312000itrm8ycBBA5_R_960_660_R5_D.jpg",
-            "nights": 2,
-            "checkIn": "2026-11-08",
-            "checkOut": "2026-11-10",
-            "photoPos": 50,
-            "business": true,
-            "businessPct": 50,
-            "booked": false,
-            "confirmation": "",
-            "reference": "",
-            "info": ""
-          },
+          "hotel": null,
           "flight": null,
           "activities": [],
           "location2": "",
@@ -3015,25 +2999,43 @@
           "food": 125
         },
         {
-          "id": "epsrl8tu",
+          "id": "criwnmff",
           "date": "2026-11-09",
+          "location": "Guilin",
+          "hotel": null,
+          "flight": null,
+          "transports": [],
+          "activities": []
+        },
+        {
+          "id": "ujqkmtut",
+          "date": "2026-11-10",
+          "location": "Guilin",
+          "hotel": null,
+          "flight": null,
+          "transports": [],
+          "activities": []
+        },
+        {
+          "id": "epsrl8tu",
+          "date": "2026-11-11",
           "location": "Guilin",
           "hotel": {
             "name": "LS hotel",
             "redEye": false,
-            "price": 500,
-            "currency": "CAD",
+            "price": 488,
+            "currency": "USD",
             "photoUrl": "https://ak-d.tripcdn.com/images/1mc5312000itrm8ycBBA5_R_960_660_R5_D.jpg",
             "nights": 2,
-            "checkIn": "2026-11-08",
-            "checkOut": "2026-11-10",
-            "photoPos": 50,
+            "checkIn": "2026-11-11",
+            "checkOut": "2026-11-13",
+            "photoPos": 63.509853786892364,
             "business": true,
             "businessPct": 50,
-            "booked": false,
-            "confirmation": "",
+            "booked": true,
+            "confirmation": "1688902067234945",
             "reference": "",
-            "info": ""
+            "info": "Family room."
           },
           "flight": null,
           "activities": [],
@@ -3042,24 +3044,24 @@
         },
         {
           "id": "zhinjoxl",
-          "date": "2026-11-10",
-          "location": "Shanghai",
+          "date": "2026-11-12",
+          "location": "Guilin",
           "hotel": {
-            "name": "Renaissance Shanghai Yu Garden Hotel",
+            "name": "LS hotel",
             "redEye": false,
-            "price": 240,
+            "price": 488,
             "currency": "USD",
-            "photoUrl": "https://lh4.googleusercontent.com/proxy/cSv8v77F2rFCWokUDqld9q5_bZo9MxZ0MM1hGs5u65E7qYPuOHDsb-rRUENg04o9E0ENBg78js92YAzUG08w_I8rS8diULml0xrkSEuRq4jVxBnGavw7e7EvwytD1QI8ZstYsoLvpPOwFIRP_jp3PB3EImE2og=s287-w287-h192-n-k-no-v1",
-            "nights": 5,
-            "checkIn": "2026-11-09",
-            "checkOut": "2026-11-14",
-            "photoPos": 50,
+            "photoUrl": "https://ak-d.tripcdn.com/images/1mc5312000itrm8ycBBA5_R_960_660_R5_D.jpg",
+            "nights": 2,
+            "checkIn": "2026-11-11",
+            "checkOut": "2026-11-13",
+            "photoPos": 63.509853786892364,
             "business": true,
-            "businessPct": 100,
-            "booked": false,
-            "confirmation": "",
+            "businessPct": 50,
+            "booked": true,
+            "confirmation": "1688902067234945",
             "reference": "",
-            "info": ""
+            "info": "Family room."
           },
           "flight": null,
           "transports": [
@@ -3087,7 +3089,7 @@
         },
         {
           "id": "j6q1zlmv",
-          "date": "2026-11-11",
+          "date": "2026-11-13",
           "location": "Shanghai",
           "hotel": {
             "name": "Renaissance Shanghai Yu Garden Hotel",
@@ -3096,8 +3098,8 @@
             "currency": "USD",
             "photoUrl": "https://lh4.googleusercontent.com/proxy/cSv8v77F2rFCWokUDqld9q5_bZo9MxZ0MM1hGs5u65E7qYPuOHDsb-rRUENg04o9E0ENBg78js92YAzUG08w_I8rS8diULml0xrkSEuRq4jVxBnGavw7e7EvwytD1QI8ZstYsoLvpPOwFIRP_jp3PB3EImE2og=s287-w287-h192-n-k-no-v1",
             "nights": 5,
-            "checkIn": "2026-11-09",
-            "checkOut": "2026-11-14",
+            "checkIn": "2026-11-11",
+            "checkOut": "2026-11-16",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3114,7 +3116,7 @@
         },
         {
           "id": "pk5iqhaa",
-          "date": "2026-11-12",
+          "date": "2026-11-14",
           "location": "Shanghai",
           "hotel": {
             "name": "Renaissance Shanghai Yu Garden Hotel",
@@ -3123,8 +3125,8 @@
             "currency": "USD",
             "photoUrl": "https://lh4.googleusercontent.com/proxy/cSv8v77F2rFCWokUDqld9q5_bZo9MxZ0MM1hGs5u65E7qYPuOHDsb-rRUENg04o9E0ENBg78js92YAzUG08w_I8rS8diULml0xrkSEuRq4jVxBnGavw7e7EvwytD1QI8ZstYsoLvpPOwFIRP_jp3PB3EImE2og=s287-w287-h192-n-k-no-v1",
             "nights": 5,
-            "checkIn": "2026-11-09",
-            "checkOut": "2026-11-14",
+            "checkIn": "2026-11-11",
+            "checkOut": "2026-11-16",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3140,7 +3142,7 @@
         },
         {
           "id": "n4fawu5b",
-          "date": "2026-11-13",
+          "date": "2026-11-15",
           "location": "Shanghai",
           "hotel": {
             "name": "Renaissance Shanghai Yu Garden Hotel",
@@ -3149,8 +3151,8 @@
             "currency": "USD",
             "photoUrl": "https://lh4.googleusercontent.com/proxy/cSv8v77F2rFCWokUDqld9q5_bZo9MxZ0MM1hGs5u65E7qYPuOHDsb-rRUENg04o9E0ENBg78js92YAzUG08w_I8rS8diULml0xrkSEuRq4jVxBnGavw7e7EvwytD1QI8ZstYsoLvpPOwFIRP_jp3PB3EImE2og=s287-w287-h192-n-k-no-v1",
             "nights": 5,
-            "checkIn": "2026-11-09",
-            "checkOut": "2026-11-14",
+            "checkIn": "2026-11-11",
+            "checkOut": "2026-11-16",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3167,7 +3169,7 @@
         },
         {
           "id": "mkcnnnui",
-          "date": "2026-11-14",
+          "date": "2026-11-16",
           "location": "Shanghai",
           "hotel": {
             "name": "W Taipei",
@@ -3176,8 +3178,8 @@
             "currency": "USD",
             "photoUrl": "https://lh3.googleusercontent.com/grass-cs/AABkmLcJ6MpM2pgy0KYMvjdMv_AMLzFactgA9sGc0OQX7BFevWXqlO7W8FiyW_JiRQlmlEPGaBnHOeRUid0nRpv3eHTt2BRwtcFu-Rw3odapN5weuCUFIIRMttOBiiIiifGtwg726XsxAqxSw0Q=s287-w287-h192-n-k-no-v1",
             "nights": 4,
-            "checkIn": "2026-11-14",
-            "checkOut": "2026-11-18",
+            "checkIn": "2026-11-16",
+            "checkOut": "2026-11-20",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3213,7 +3215,7 @@
         },
         {
           "id": "jw41yrbn",
-          "date": "2026-11-15",
+          "date": "2026-11-17",
           "location": "Taipei",
           "hotel": {
             "name": "W Taipei",
@@ -3222,8 +3224,8 @@
             "currency": "USD",
             "photoUrl": "https://lh3.googleusercontent.com/grass-cs/AABkmLcJ6MpM2pgy0KYMvjdMv_AMLzFactgA9sGc0OQX7BFevWXqlO7W8FiyW_JiRQlmlEPGaBnHOeRUid0nRpv3eHTt2BRwtcFu-Rw3odapN5weuCUFIIRMttOBiiIiifGtwg726XsxAqxSw0Q=s287-w287-h192-n-k-no-v1",
             "nights": 4,
-            "checkIn": "2026-11-14",
-            "checkOut": "2026-11-18",
+            "checkIn": "2026-11-16",
+            "checkOut": "2026-11-20",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3239,7 +3241,7 @@
         },
         {
           "id": "5gq6seqd",
-          "date": "2026-11-16",
+          "date": "2026-11-18",
           "location": "Taipei",
           "hotel": {
             "name": "W Taipei",
@@ -3248,8 +3250,8 @@
             "currency": "USD",
             "photoUrl": "https://lh3.googleusercontent.com/grass-cs/AABkmLcJ6MpM2pgy0KYMvjdMv_AMLzFactgA9sGc0OQX7BFevWXqlO7W8FiyW_JiRQlmlEPGaBnHOeRUid0nRpv3eHTt2BRwtcFu-Rw3odapN5weuCUFIIRMttOBiiIiifGtwg726XsxAqxSw0Q=s287-w287-h192-n-k-no-v1",
             "nights": 4,
-            "checkIn": "2026-11-14",
-            "checkOut": "2026-11-18",
+            "checkIn": "2026-11-16",
+            "checkOut": "2026-11-20",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3266,7 +3268,7 @@
         },
         {
           "id": "hodqvj7u",
-          "date": "2026-11-17",
+          "date": "2026-11-19",
           "location": "Taipei",
           "hotel": {
             "name": "W Taipei",
@@ -3275,8 +3277,8 @@
             "currency": "USD",
             "photoUrl": "https://lh3.googleusercontent.com/grass-cs/AABkmLcJ6MpM2pgy0KYMvjdMv_AMLzFactgA9sGc0OQX7BFevWXqlO7W8FiyW_JiRQlmlEPGaBnHOeRUid0nRpv3eHTt2BRwtcFu-Rw3odapN5weuCUFIIRMttOBiiIiifGtwg726XsxAqxSw0Q=s287-w287-h192-n-k-no-v1",
             "nights": 4,
-            "checkIn": "2026-11-14",
-            "checkOut": "2026-11-18",
+            "checkIn": "2026-11-16",
+            "checkOut": "2026-11-20",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3293,7 +3295,7 @@
         },
         {
           "id": "dbjuc473",
-          "date": "2026-11-18",
+          "date": "2026-11-20",
           "location": "Taipei",
           "hotel": {
             "name": "Le Méridien Seoul, Myeongdong",
@@ -3302,8 +3304,8 @@
             "currency": "CAD",
             "photoUrl": "https://lh3.googleusercontent.com/grass-cs/AABkmLc48VuBWPU6p94BOBKshUP1FmQaIgZml8GylxjrgLbJk93MUdvCCP4Z-N484RXSqcFrWXivbz-OCv4TU19OXw7UAv9qzJ8eTrLV9CGCjdYqe-0quOp3Qz34eALDKZKzqJnSejrNJyE26sf2=s287-w287-h192-n-k-no-v1",
             "nights": 2,
-            "checkIn": "2026-11-18",
-            "checkOut": "2026-11-20",
+            "checkIn": "2026-11-20",
+            "checkOut": "2026-11-22",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3338,7 +3340,7 @@
         },
         {
           "id": "s3tgpvdb",
-          "date": "2026-11-19",
+          "date": "2026-11-21",
           "location": "Seoul",
           "hotel": {
             "name": "Le Méridien Seoul, Myeongdong",
@@ -3347,8 +3349,8 @@
             "currency": "CAD",
             "photoUrl": "https://lh3.googleusercontent.com/grass-cs/AABkmLc48VuBWPU6p94BOBKshUP1FmQaIgZml8GylxjrgLbJk93MUdvCCP4Z-N484RXSqcFrWXivbz-OCv4TU19OXw7UAv9qzJ8eTrLV9CGCjdYqe-0quOp3Qz34eALDKZKzqJnSejrNJyE26sf2=s287-w287-h192-n-k-no-v1",
             "nights": 2,
-            "checkIn": "2026-11-18",
-            "checkOut": "2026-11-20",
+            "checkIn": "2026-11-20",
+            "checkOut": "2026-11-22",
             "photoPos": 50,
             "business": true,
             "businessPct": 100,
@@ -3365,7 +3367,7 @@
         },
         {
           "id": "u5bsp686",
-          "date": "2026-11-20",
+          "date": "2026-11-22",
           "location": "Seoul",
           "hotel": {
             "name": "",
@@ -3374,8 +3376,8 @@
             "currency": "CAD",
             "photoUrl": "",
             "nights": 1,
-            "checkIn": "2026-11-20",
-            "checkOut": "2026-11-21",
+            "checkIn": "2026-11-22",
+            "checkOut": "2026-11-23",
             "photoPos": 50,
             "business": false,
             "businessPct": 100,
@@ -3406,7 +3408,7 @@
         },
         {
           "id": "6jx1ojvk",
-          "date": "2026-11-21",
+          "date": "2026-11-23",
           "location": "Montreal",
           "hotel": null,
           "flight": null,
@@ -3439,5 +3441,5 @@
   ],
   "routeOptions": {},
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-10-14T21:05:50.593Z"
+  "publishedAt": "2026-10-14T21:16:42.092Z"
 }
