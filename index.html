@@ -1966,6 +1966,10 @@ async function renderCalendar() {
   const emptyBox = document.getElementById("emptyTrip");
   if (emptyBox) emptyBox.style.display = it.days.length ? "none" : "";
   const grid = document.getElementById("calGrid");
+  // Emptying the grid snaps the scroller back to Day 1, so every re-render (the phone's
+  // background refresh, a photo fix, an edit) threw away where JP was. Keep the position.
+  const wrap = document.getElementById("calWrap");
+  const keepLeft = wrap.scrollLeft, keepTop = wrap.scrollTop;
   grid.innerHTML = "";
   grid.className = state.calendarView === "timeline" ? "timeline" : "";
 
@@ -2013,6 +2017,7 @@ async function renderCalendar() {
   addCol.className = "add-day"; addCol.textContent = "+";
   addCol.addEventListener("click", addDay);
   grid.appendChild(addCol);
+  wrap.scrollLeft = keepLeft; wrap.scrollTop = keepTop;
 
   // Each hotel card is offset half a column and overhangs into the NEXT day. Columns are
   // DOM siblings, so by default column N+1's sticky strip (same z-index, later in order)
@@ -3980,11 +3985,31 @@ async function initPublishedTrip() {
 setInterval(() => { if (!document.hidden) initPublishedTrip(); }, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) initPublishedTrip(); });
 
+// The phone link always opened on Day 1, so mid-trip JP had to swipe through every past day
+// to find today (JP, 2026-10-14). On load, put today's column first in view: before the trip
+// that is Day 1, after it the last day. Load only, never on the 60s refresh, or the view
+// would jump out from under a thumb mid-swipe.
+function scrollToToday() {
+  const days = activeItin().days;
+  if (!days.length) return;
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const day = days.find(x => x.date >= today) || days[days.length - 1];
+  const col = document.querySelector(`.day-col[data-day-id="${day.id}"]`);
+  if (!col) return;
+  const wrap = document.getElementById("calWrap");
+  const rulerW = (document.querySelector(".hour-ruler") || {}).offsetWidth || 0;
+  wrap.scrollLeft = Math.max(0, col.offsetLeft - rulerW - 4);
+}
+
 // ---------- init ----------
 if (patchesApplied) save();
 renderChatLog();
 renderCalendar();
-initPublishedTrip();
+scrollToToday();          // the columns are already in the DOM: renderCalendar builds them before its first await
+// Again once the published copy is in: taking a newer one re-renders the grid, which resets
+// the scroll, and a first visit has no trip at all until it arrives.
+initPublishedTrip().then(scrollToToday);
 checkBridge();
 setInterval(checkBridge, 15000);
 </script>
