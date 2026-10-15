@@ -113,6 +113,8 @@
   #calItinSelect { max-width: 150px; }
   #tripStats .stat:first-child { padding-left: 0; }
   #totalStat b { color: var(--accent); }
+  #totalStat #paidLeft { text-transform: none; letter-spacing: 0; font-size: 10.5px; margin-top: 2px; white-space: nowrap; }
+  #paidLeft:empty { display: none; }
   .stat b { font-size: 15px; line-height: 1.1; }
   .stat span { font-size: 9.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .04em; }
   .sun-line { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; z-index: 1; }
@@ -394,7 +396,7 @@
             <option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option>
             <option>AUD</option><option>JPY</option><option>CHF</option>
           </select>
-          <div class="stat" id="totalStat"><b id="grandTotalInline">&mdash;</b><span>trip total</span></div>
+          <div class="stat" id="totalStat"><b id="grandTotalInline">&mdash;</b><span>trip total</span><span id="paidLeft"></span></div>
         </div>
         <div class="row" id="tripStats"></div>
       </div>
@@ -795,9 +797,15 @@ function addDay() {
 function bookingFieldsHtml(prefix, rec, refLabel) {
   const r = rec || {};
   return `
-    <label class="muted" style="display:flex;align-items:center;gap:6px;margin-top:12px;cursor:pointer;font-weight:600;color:var(--ink)">
-      <input id="${prefix}_booked" type="checkbox" ${r.booked ? "checked" : ""} style="width:auto" />
-      Booked / confirmed</label>
+    <div style="display:flex;gap:18px;margin-top:12px">
+      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:var(--ink)">
+        <input id="${prefix}_booked" type="checkbox" ${r.booked ? "checked" : ""} style="width:auto" />
+        Booked / confirmed</label>
+      <!-- Separate from booked: a stay can be confirmed now and charged at check-in (JP, 2026-10-15). -->
+      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:var(--ink)">
+        <input id="${prefix}_paid" type="checkbox" ${r.paid ? "checked" : ""} style="width:auto" />
+        Paid</label>
+    </div>
     <div class="row">
       <div style="flex:1"><label class="muted">Confirmation #</label>
         <input id="${prefix}_conf" value="${(r.confirmation || "").replace(/"/g, "&quot;")}" placeholder="ABC123" /></div>
@@ -811,6 +819,7 @@ function readBookingFields(prefix) {
   const g = id => document.getElementById(prefix + "_" + id);
   return {
     booked: !!(g("booked") && g("booked").checked),
+    paid: !!(g("paid") && g("paid").checked),
     confirmation: g("conf") ? g("conf").value.trim() : "",
     reference: g("ref") ? g("ref").value.trim() : "",
     info: g("info") ? g("info").value.trim() : "",
@@ -1016,7 +1025,7 @@ function openSlotDialog(dayId, kind, activityId, presetType, presetTime) {
       <div id="f_searchResults"></div>
       <label class="muted" style="margin-top:10px">Name / notes</label><input id="f_name" value="${h.name || ""}" />
       <label class="muted">City (sets the location for every night of this stay)</label>
-      <input id="f_city" value="${day.location || ""}" placeholder="Barcelona" />
+      <input id="f_city" value="${(day.date === (h.checkIn || day.date) && day.location2) || day.location || ""}" placeholder="Barcelona" />
       <div class="row">
         <div style="flex:1"><label class="muted">Check in</label>
           <input id="f_checkin" type="date" value="${h.checkIn || day.date}" /></div>
@@ -1281,7 +1290,11 @@ document.getElementById("slotSave").addEventListener("click", async () => {
       it.days.forEach(x => {
         if (x.date >= checkIn && x.date < checkOut) {
           x.hotel = { ...rec };
-          if (city) x.location = city;
+          // On the arrival day the hotel is in the place you travel TO (location2). Writing it
+          // to location turned "HKG -> Sanya" into "Sanya" and, opened again, offered HKG as
+          // the hotel's city, so one save moved a whole Sanya stay to Hong Kong (JP, 2026-10-15).
+          if (city && x.date === checkIn && x.location2) x.location2 = city;
+          else if (city) x.location = city;
         }
       });
       // Moving check-in later can strand the stay on days it no longer covers.
@@ -1378,7 +1391,10 @@ function pxToTime(px) {
 
 // Kept for the few call sites that want "one hour tall" as a minimum block size.
 function hourHeightPx() { return 34; }
-function bookedMark(rec) { return rec && rec.booked ? '<span class="bookmark">\u2713</span>' : ""; }
+function bookedMark(rec) {
+  if (!rec || !(rec.booked || rec.paid)) return "";
+  return `<span class="bookmark">${rec.paid ? "$" : ""}${rec.booked ? "\u2713" : ""}</span>`;
+}
 
 function timelineBlockHtml(kind, startTime, endTime, label, sub, title, rec) {
   if (!startTime) return "";
@@ -2419,8 +2435,17 @@ async function fillDayFlags(grid) {
   }
 }
 
+// Local calendar date, not toISOString(): in the evening west of UTC that is already tomorrow.
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 async function itinTotal(it) {
-  let total = 0, business = 0;
+  let total = 0, business = 0, paid = 0;
+  // Paid vs left (JP, 2026-10-15): anything on a day before today has been spent, and anything
+  // ticked "Paid" counts whatever its date. Booked alone is NOT paid. Left = total - paid.
+  const today = todayIso();
   const pax = Math.max(1, Number(it.pax) || 1);
   // Broken out per category so the headline number can be AUDITED rather than trusted:
   // "is that total right?" is only answerable if you can see what went into it.
@@ -2434,8 +2459,9 @@ async function itinTotal(it) {
   const flag = (dayIdx, day, cat, label, reason) =>
     missingItems.push({ n: dayIdx + 1, date: day.date, cat, label, reason });
   // A line's business share is its own percentage of that line; the rest is personal.
-  const add = (amount, rec, cat) => {
+  const add = (amount, rec, cat, day) => {
     total += amount;
+    if (day.date < today || (rec && rec.paid)) paid += amount;
     by[cat] += amount;
     counts[cat]++;
     if (rec && rec.business) business += amount * ((rec.businessPct != null ? rec.businessPct : 100) / 100);
@@ -2454,21 +2480,21 @@ async function itinTotal(it) {
       if (t.price == null) { flag(i, day, "transport", label, "no price"); continue; }
       const c = await toHome(t.price, t.currency);
       if (c == null) flag(i, day, "transport", label, noRate(t.currency));
-      else if (perVehicle(t.type)) { vehicleLegs++; add(c, t, "transport"); }
-      else add(c * pax, t, "transport");
+      else if (perVehicle(t.type)) { vehicleLegs++; add(c, t, "transport", day); }
+      else add(c * pax, t, "transport", day);
     }
     for (const a of (day.activities || [])) {
       const label = (a.kind === "meal" ? "\ud83c\udf5d " : "") + (a.name || (a.kind === "meal" ? "Meal" : "Activity"));
       if (a.price == null) { flag(i, day, "activities", label, "no price"); continue; }
       const c = await toHome(a.price, a.currency);
       if (c == null) flag(i, day, "activities", label, noRate(a.currency));
-      else add(c * pax, a, "activities");
+      else add(c * pax, a, "activities", day);
     }
     // A whole-party guess for the day, so it is NOT multiplied by party size the way a
     // ticket or an activity is -- and it is typed in the home currency, so there is nothing
     // to convert. A day with nothing typed is not "missing a price": food is optional by
     // design, and flagging 52 blank days would bury the warnings that matter.
-    if (typeof day.food === "number" && isFinite(day.food)) add(day.food, null, "food");
+    if (typeof day.food === "number" && isFinite(day.food)) add(day.food, null, "food", day);
     // A red-eye is a seat, not a room: having no nightly rate is the correct state for
     // one, so flagging it as a missing price was pure noise.
     if (day.hotel && !day.hotel.redEye) {
@@ -2477,21 +2503,24 @@ async function itinTotal(it) {
       else {
         const c = await toHome(day.hotel.price, day.hotel.currency);
         if (c == null) flag(i, day, "hotels", label, noRate(day.hotel.currency));
-        else add(c, day.hotel, "hotels");
+        else add(c, day.hotel, "hotels", day);
       }
     }
   }
   return { total, missing: missingItems.length, missingItems, vehicleLegs,
-           business, personal: total - business, by, counts, pax };
+           business, personal: total - business, paid, by, counts, pax };
 }
 async function updateGrandTotal() {
-  const { total, missing, missingItems, vehicleLegs, business, personal, by, counts, pax } = await itinTotal(activeItin());
+  const { total, missing, missingItems, vehicleLegs, business, personal, paid, by, counts, pax } = await itinTotal(activeItin());
   // One place only: the stats band. The header carried a second copy that a phone hid,
   // so the figure JP could always see was the one WITHOUT the breakdown behind it.
   const el = document.getElementById("totalStat");
   const fmt = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency });
   const inline = document.getElementById("grandTotalInline");
   if (inline) inline.textContent = (missing ? "\u26a0 " : "") + fmt(total);
+  const fmt0 = v => v.toLocaleString(undefined, { style: "currency", currency: state.homeCurrency, maximumFractionDigits: 0 });
+  const pl = document.getElementById("paidLeft");
+  if (pl) pl.textContent = total > 0 ? `Paid ${fmt0(paid)} \u00b7 Left ${fmt0(total - paid)}` : "";
   if (!el) return;
   const pct = total > 0 ? Math.round((business / total) * 100) : 0;
   // Show the WORKING, not just the answer: every line says what it counted and whether
@@ -2506,6 +2535,7 @@ async function updateGrandTotal() {
   lines.push(`Hotels     ${fmt(by.hotels)}   (${counts.hotels} night${counts.hotels === 1 ? "" : "s"}, per room)`);
   lines.push(`Activities ${fmt(by.activities)}   (${counts.activities} \u00d7 ${pax})`);
   lines.push(`Food       ${fmt(by.food)}   (${counts.food} day${counts.food === 1 ? "" : "s"} budgeted, whole party)`);
+  lines.push("", `Paid ${fmt(paid)} (days before today + anything ticked Paid) \u00b7 Left ${fmt(total - paid)}`);
   if (business > 0) lines.push("", `Business ${fmt(business)} (${pct}%) \u00b7 Personal ${fmt(personal)} (${100 - pct}%)`);
   else lines.push("", "No business expenses flagged yet.");
   if (missing) {
@@ -4012,8 +4042,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) init
 function scrollToToday() {
   const days = activeItin().days;
   if (!days.length) return;
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = todayIso();
   const day = days.find(x => x.date >= today) || days[days.length - 1];
   const col = document.querySelector(`.day-col[data-day-id="${day.id}"]`);
   if (!col) return;
