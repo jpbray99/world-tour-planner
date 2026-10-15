@@ -3812,6 +3812,8 @@ async function publishTrip() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ homeCurrency: state.homeCurrency, itineraries: state.itineraries,
                              routeOptions: state.routeOptions,
+                             // Which plan is OPEN here, so the phone opens the same one (see applyPublishedTrip).
+                             activeItinId: state.activeItinId,
                              // pk. only. An sk. token is a secret and must never leave here.
                              mapboxToken: (state.mapboxToken || "").startsWith("pk.") ? state.mapboxToken : "" }),
     });
@@ -3857,7 +3859,7 @@ if (canPublish()) setTimeout(() => { if (tripHasDays(state)) scheduleAutoPublish
 window.addEventListener("beforeunload", () => {
   if (!autoPublishTimer || !state.autoPublish || !tripHasDays(state) || !canPublish()) return;
   const body = JSON.stringify({ homeCurrency: state.homeCurrency, itineraries: state.itineraries,
-                                routeOptions: state.routeOptions,
+                                routeOptions: state.routeOptions, activeItinId: state.activeItinId,
                                 mapboxToken: (state.mapboxToken || "").startsWith("pk.") ? state.mapboxToken : "" });
   // fetch() is cancelled on unload; sendBeacon is the one request the browser promises to
   // finish. It cannot set an Authorization header, so the token rides in the body.
@@ -3918,7 +3920,13 @@ function applyPublishedTrip(d) {
   if (!state.mapboxToken && typeof d.mapboxToken === "string" && d.mapboxToken.startsWith("pk.")) {
     state.mapboxToken = d.mapboxToken;
   }
-  state.activeItinId = state.itineraries[0].id;
+  // Open the SAME plan the laptop has open. The phone used to open itineraries[0] after
+  // every publish, so with "Asia" first in the list and the laptop on "Asia (No Phuket, No
+  // Hong Kong)", the two devices showed different trips for the same dates and JP read it
+  // as the hotel having moved (Guilin, 2026-10-15). Older publishes carry no activeItinId
+  // and fall back to the first plan as before.
+  state.activeItinId = state.itineraries.some(i => i.id === d.activeItinId) ? d.activeItinId
+                                                                            : state.itineraries[0].id;
   state.publishedAt = d.publishedAt || d.exportedAt || "";
   markTripClean();          // this device now equals the published copy
   save();
