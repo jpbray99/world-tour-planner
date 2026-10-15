@@ -2214,6 +2214,7 @@
               "business": false,
               "businessPct": 100,
               "booked": true,
+              "paid": true,
               "confirmation": "",
               "reference": "",
               "info": ""
@@ -2387,6 +2388,7 @@
             "business": false,
             "businessPct": 100,
             "booked": true,
+            "paid": false,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -2432,6 +2434,7 @@
             "business": false,
             "businessPct": 100,
             "booked": true,
+            "paid": false,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -2442,7 +2445,7 @@
         {
           "id": "1nhaufo0",
           "date": "2026-10-22",
-          "location": "Rome",
+          "location": "Cairo",
           "hotel": {
             "name": "The Nile Ritz-Carlton, Cairo",
             "redEye": false,
@@ -2456,6 +2459,7 @@
             "business": false,
             "businessPct": 100,
             "booked": true,
+            "paid": false,
             "confirmation": "",
             "reference": "",
             "info": ""
@@ -3579,5 +3583,5 @@
   "routeOptions": {},
   "activeItinId": "zeg7dcyp",
   "mapboxToken": "pk.eyJ1IjoianBicmF5MSIsImEiOiJjbXQxd2poMWMwMmZuMzVwdzducnE0czEyIn0.Tf4AIu_1MLHx4qNKaUOm1A",
-  "publishedAt": "2026-10-15T07:49:14.696Z"
+  "publishedAt": "2026-10-15T07:58:30.863Z"
 }
