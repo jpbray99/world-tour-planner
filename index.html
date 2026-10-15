@@ -3927,6 +3927,7 @@ function applyPublishedTrip(d) {
   // and fall back to the first plan as before.
   state.activeItinId = state.itineraries.some(i => i.id === d.activeItinId) ? d.activeItinId
                                                                             : state.itineraries[0].id;
+  state.publishedActiveItinId = d.activeItinId || "";
   state.publishedAt = d.publishedAt || d.exportedAt || "";
   markTripClean();          // this device now equals the published copy
   save();
@@ -3979,7 +3980,18 @@ async function initPublishedTrip() {
   if (!d) return;
   if (!tripHasDays(state)) { applyPublishedTrip(d); return; }
   const stamp = d.publishedAt || d.exportedAt || "";
-  if (!stamp || stamp === state.publishedAt) return;
+  if (!stamp || stamp === state.publishedAt) {
+    // This publish was already taken here, but the plan it names has not been adopted yet. A
+    // page that took it while still running the OLD code (which ignored activeItinId) would
+    // otherwise sit on the first plan until the laptop's next edit. One-time catch-up, and only
+    // on a device with nothing of its own to lose; afterwards switching plans here sticks.
+    if (stamp && d.activeItinId && d.activeItinId !== state.publishedActiveItinId && tripIsClean()
+        && state.itineraries.some(i => i.id === d.activeItinId)) {
+      state.activeItinId = d.activeItinId; state.publishedActiveItinId = d.activeItinId;
+      save(); renderItinSelect(); renderCalendar();
+    }
+    return;
+  }
   // The confirm exists to protect UNPUBLISHED WORK. On a phone there never is any, so the
   // phone sat permanently one tap behind the trip -- it had the newer copy in hand and asked
   // permission to show it, on a banner nobody was looking for (JP, 2026-09-07). A device
